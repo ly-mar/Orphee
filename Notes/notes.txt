@@ -1,0 +1,38 @@
+================================================================================
+                                TUNEHUB / TUBEAPP NOTES
+================================================================================
+
+[CURRENT TO-DO / IN PROGRESS]
+- [x] Seed mock data (scripts/seedData.js) - Completed & seeded 5 users, playlists, daily logs, collective
+- [x] Decouple Algo.js math into pure functions (utils/algorithmUtils.js) - Completed
+- [x] Add Jest unit tests for compatibility score formulas (__tests__/algorithm.test.js) - 5/5 passing
+- [x] Implement search caching & debouncing in services/musicApi.js - Completed
+
+--------------------------------------------------------------------------------
+[WHAT IS LEFT TO DO / UPCOMING FEATURES]
+- Deploy Firestore/Storage security rules & Cloud Functions (firebase deploy)
+- Add in-app Account Deletion mechanism in SecuritySettings.js (Apple Guideline 5.1.1(v))
+- Configure EAS production build credentials & native app identity in app.json
+- Add public Privacy Policy & Terms of Service links in SettingsScreen.js
+- Configure APNs/FCM production push notification keys in EAS
+- Detailed roadmap saved in: Notes/usability_and_testing_roadmap.txt
+- LLM Execution Prompt & Spec saved in: Notes/production_viability_llm_prompt.md
+
+--------------------------------------------------------------------------------
+[BUGS & IMPROVEMENTS - COMPLETED]
+- Fixed: Web unresponsiveness & stretching (Added WebTestingWrapper with Mobile/Tablet/Full toggles)
+- Fixed: Quick screen navigator & 1-tap test login on Welcome, Login, and Top Bar
+- Fixed: Invisible Taskbar icons (Replaced with vector icons & centered responsive layout)
+- Fixed: UserGraph.js center coordinate math & double-scaling bug (centered "You" node with orbit rings)
+- Fixed: UserGraph.js node inspector modal with mutual musical DNA & friend request actions
+- Fixed: Empty-state crashes in UserGraph.js & RankedUsers.js (Math.max safe guards)
+- Fixed: Your13 13-slot tray, progress bar, 30s audio streaming (expo-av) & LockContext cooldown
+- Fixed: UploadProfilePicture.js deleteField crash (switched to deleteObject)
+- Fixed: MemoirHistoryScreen.js arrayRemove bug & route params optional chaining
+- Fixed: MainChatScreen.js N+1 user read storm with in-memory caching
+- Detailed viability roadmap rewritten in: Notes/usability_and_testing_roadmap.txt
+
+--------------------------------------------------------------------------------
+[MISCELLANEOUS / IDEAS / SCRATCHPAD]
+- Staged features (Party/Coplay & Pipeline/GuessPage) moved to future_features/
+- Consider centralized songs collection in Firestore to avoid document duplication

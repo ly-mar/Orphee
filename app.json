@@ -1,27 +1,54 @@
 {
   "expo": {
-    "name": "TubeApp",
-    "slug": "TubeApp",
+    "name": "TuneHub",
+    "slug": "tunehub",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0A0C10"
     },
     "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tunehub.chorus",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "TuneHub accesses your photo library so you can upload a profile avatar and share musical memories.",
+        "NSCameraUsageDescription": "TuneHub uses your camera so you can capture profile photos and live music moments.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
+    "android": {
+      "package": "com.tunehub.chorus",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0C10"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TuneHub accesses your photo library so you can upload a profile avatar and share musical memories."
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a7b8bd8d-3876-4979-8d8c-e5faf13afc1d"
+      }
+    },
+    "owner": "tunehubchoruss-team"
   }
 }

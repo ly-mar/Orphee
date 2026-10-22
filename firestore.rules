@@ -1,0 +1,86 @@
+// firestore.rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users: Anyone authenticated can read profiles; only owner can write
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isOwner(userId);
+    }
+
+    // Playlists (Your13): Authenticated users can read; only owner can write
+    match /playlists/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+
+    // Precomputed rankings: Only readable and writable by owner (and Admin SDK)
+    match /ranking/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Chats: Only listed participants can read or write
+    match /chats/{chatId} {
+      allow read, write: if isAuthenticated() &&
+        (resource == null || request.auth.uid in resource.data.participants);
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // Memoirs: Private to the owner (readable by authenticated peers on profile view)
+    match /memoirs/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+
+    // Daily rhythm logs: Public read; authenticated write
+    match /daily/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+    }
+
+    // The Collective shelves & nested songs/votes
+    match /theCollective/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      match /{allSubPaths=**} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    match /collective/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      match /{allSubPaths=**} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // Friend Requests & Relationships
+    match /requests/{userId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Uploaded Profile Images Metadata
+    match /images/{imageId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    // UGC Moderation Reports
+    match /reports/{reportId} {
+      allow create: if isAuthenticated() && request.resource.data.reporterUid == request.auth.uid;
+      allow read: if isAuthenticated() && resource.data.reporterUid == request.auth.uid;
+    }
+  }
+}

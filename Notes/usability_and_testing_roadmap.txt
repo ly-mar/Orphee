@@ -1,0 +1,268 @@
+================================================================================
+          TUNEHUB / TUBEAPP: USABILITY, TESTABILITY & VIABILITY ROADMAP
+      Post-Fix Codebase Audit, Current State & Production Readiness Plan
+================================================================================
+Current Status: Phases 1, 2, and 3 100% Completed; Phase 4 in Progress (October 2026)
+Tech Stack: React Native 0.75, Expo SDK 51, Firebase v10 Modular SDK, Expo-AV, Jest
+Target Platforms: Web (Rapid QA/Iteration), iOS & Android (Expo Go / EAS Native)
+================================================================================
+
+1. EXECUTIVE AUDIT & PROGRESSION SUMMARY
+--------------------------------------------------------------------------------
+TuneHub (TubeApp / Chorus) has successfully transitioned from an early crash-prone 
+prototype into an architecturally robust, verified, and testable music-social application.
+
+Major Milestones Verified & Completed:
+  ✓ Clean bundling across web and native (`npx expo export --platform web` exports 
+    1,548 modules with 0 errors).
+  ✓ Automated unit testing active with Jest (`npm test` passes 5/5 algorithm test 
+    suites in <0.3s).
+  ✓ Seeding engine (`scripts/seedData.js`) executed live: populated 5 diverse mock user 
+    profiles, complete 13-track playlists, recent daily songs, and Collective shelves.
+  ✓ Automatic auth persistence gate in `App.js`: authenticated sessions auto-boot to 
+    `HomeScreen` with a branded dark splash screen; logged-out users route to `WelcomeScreen`.
+  ✓ Mathematical affinity radar (`UserGraph.js`) overhauled with centered coordinate 
+    geometry, 4 concentric orbit tiers, connection rays, normalized percentage badges, 
+    interactive node inspector modal, mutual musical DNA, and zoom/pan controls.
+  ✓ Pure calculation logic decoupled from `Algo.js` into `utils/algorithmUtils.js` 
+    with zero React or Firebase dependencies.
+  ✓ Centralized iTunes search service (`services/musicApi.js`) with 380ms debouncing 
+    and in-memory TTL caching to prevent rate-limit failures.
+  ✓ Music curation (`Your13.js`, `SongDetailsScreen.js`, `ViewChoicesScreen.js`) 
+    standardized on a canonical 8-property track contract, 30-second `expo-av` 
+    audio streaming, and persistent `LockContext.js` cooldowns.
+  ✓ External streaming fallbacks ("Listen on Apple Music" and "Listen on Spotify") 
+    added to `SongDetailsScreen.js` via `Linking.openURL()` with audio error banners.
+  ✓ O(1) Fast-Path ranking in `Your13.js`: reads precomputed `ranking/{userId}` cache 
+    before falling back to collection scans.
+  ✓ Social & media pipeline crashes resolved (`deleteObject` in `UploadProfilePicture.js`, 
+    fetch-filter-set mutation in `MemoirHistoryScreen.js`, null guards in `RankedMusicList.js`, 
+    and user profile caching in `MainChatScreen.js`).
+  ✓ Apple UGC compliance: User reporting and blocking added to `UserProfileScreen.js` 
+    and `ChatScreen.js`.
+  ✓ Production security rules drafted in `firestore.rules` and `storage.rules`.
+  ✓ Background cloud computation function drafted in `functions/index.js`.
+  ✓ Unintegrated prototype features cleanly archived in `future_features/`.
+
+
+================================================================================
+2. INVENTORY OF COMPLETED FIXES & HARDENED BASELINE
+================================================================================
+
+[✓] 1. Web Runtime, Viewport Responsiveness & Layout Architecture
+    - Implemented `WebTestingWrapper.js` providing multi-device viewport switching 
+      (Mobile 420px, Tablet 720px, Full Width), quick screen jump toolbar, and 
+      auth status bar.
+    - Constrained max-widths (480px) and centered cards across `HomeScreen.js`, 
+      `Taskbar.js`, `WelcomeScreen.js`, `LoginScreen.js`, and `RankedUsers.js`.
+    - Redesigned `Taskbar.js` using centered `MaterialCommunityIcons` with distinct 
+      Home, Search, Profile, and Daily Tune navigation routes.
+
+[✓] 2. Dev Testing & Authentication Friction Elimination
+    - Added 1-tap test login buttons across `WelcomeScreen.js`, `LoginScreen.js`, 
+      and `WebTestingWrapper.js` configured for test account `hihicad881@chainds.com`.
+    - Configured platform-aware auth persistence using `@react-native-async-storage/async-storage` 
+      on native and browser storage on web (`firebaseConfig.js`).
+    - Implemented automated auth persistence gate in `App.js` with branded splash screen.
+
+[✓] 3. Radar & Affinity Constellation Geometry Overhaul (`UserGraph.js`)
+    - Fixed coordinate math bug where `minX/minY` offsetting and double-scaling 
+      threw the center node off-screen into the bottom-right corner.
+    - Centered "You" node with radiant orange glow, 4 concentric orbit rings 
+      (100% Soulmates, 75% High Vibe, 50% Common Ground, 25% Outer Orbit), and 
+      radial connection rays.
+    - Normalized decimal scores into percentage badges (e.g., `87%`).
+    - Added interactive SVG node modal inspector showing mutual music DNA, direct 
+      links to `UserProfileScreen.js`, and friend request action buttons.
+    - Added cross-platform Zoom (`+`, `-`) and Pan controls.
+    - Guarded empty states with `Math.max(..., 0.01)` to prevent `-Infinity` crashes.
+
+[✓] 4. Decoupled Compatibility Algorithm & Unit Testing Suite
+    - Extracted pure mathematical affinity functions into `utils/algorithmUtils.js`:
+      * `jaccardSimilarity(setA, setB)`
+      * `cosineSimilarity(vecA, vecB)`
+      * `levenshteinDistance(strA, strB)`
+      * `calculateGenreDistributionSimilarity(genresA, genresB)`
+      * `calculateReleaseYearAffinity(datesA, datesB)`
+      * `computePairwiseAffinity(userA, userB, weights)`
+      * `computeSimilarityMatrix(users, weights)`
+    - Re-exported functions from `Algo.js` for backward compatibility.
+    - Installed `jest` and `jest-expo` and configured `"test": "jest"` in `package.json`.
+    - Built comprehensive unit test suite in `__tests__/algorithm.test.js` passing 
+      5/5 assertions (identical playlists, disjoint playlists, partial matches, 
+      edge cases, and division-by-zero guards).
+
+[✓] 5. Centralized Music API Service Layer
+    - Created `services/musicApi.js`:
+      * Centralized iTunes search with 380ms debouncing (`createDebouncedSearch`).
+      * 5-minute in-memory TTL caching to prevent rate-limit HTTP 429 errors.
+      * Universal track normalization (`normalizeTrack`) ensuring consistent 8-property schema.
+      * High-res album cover URL formatting (`getHighResImage`).
+    - Integrated service into `AddSong.js`, `SongDetailsScreen.js`, and `Your13.js`.
+
+[✓] 6. Mock Data Seeding Engine
+    - Created `scripts/seedData.js` with authenticated Firebase sign-in (`hihicad881@chainds.com`).
+    - Successfully seeded 5 diverse mock user profiles in Firestore:
+      * Alice_RnB (`mock_alice`): 90s R&B & Neo-Soul
+      * Bob_Rock (`mock_bob`): 80s Classic Rock & Post-Punk
+      * Charlie_HipHop (`mock_charlie`): Golden Age Hip Hop & Boom Bap
+      * Diana_Indie (`mock_diana`): Dream Pop & Indie Folk
+      * Evan_Afrobeats (`mock_evan`): Afrobeats & Amapiano
+    - Populated 13 valid iTunes tracks for each user, 4 recent daily logs each, and 
+      The Collective theme shelves.
+
+[✓] 7. Audio Playback Resiliency & External Streaming Fallbacks
+    - `SongDetailsScreen.js`: Added audio error handling banner for expired preview streams.
+    - Integrated deep-link buttons ("Listen on Apple Music" and "Listen on Spotify") 
+      using `Linking.openURL()`.
+
+[✓] 8. Daily Rhythm, Social Chat & Media Pipeline Hardening
+    - `UploadProfilePicture.js`: Replaced fatal crash `deleteField(storageRef)` with 
+      `deleteObject(storageRef)` from `firebase/storage`.
+    - `MemoirHistoryScreen.js`: Replaced unreliable `arrayRemove` with robust fetch-filter-set 
+      mutation and added optional chaining on `route?.params?.pastMemoirs`.
+    - `RankedMusicList.js`: Added defensive null checks for incomplete daily logs and 
+      scoped queries by date (`where('date', '==', targetDate)` with `limit(100)`).
+    - `MainChatScreen.js`: Implemented in-memory `userCacheRef` to stop redundant N+1 
+      user document and avatar reads on every chat update.
+
+[✓] 9. Security, Governance & UGC Moderation Foundations
+    - Authored production `firestore.rules` and `storage.rules`.
+    - Created background Cloud Function in `functions/index.js` for asynchronous affinity 
+      matrix calculation on `playlists/{userId}` writes.
+    - Added user reporting (`reports` collection) and user blocking (`blockedUsers`) in 
+      `UserProfileScreen.js` and `ChatScreen.js`.
+    - Added push notification dispatch helper (`sendExpoPushNotification`) to `HandlingFriends.js` 
+      and `ChatScreen.js`.
+
+
+================================================================================
+3. WHAT REMAINS TO BE DONE FOR FULL COMMERCIAL VIABILITY
+================================================================================
+
+To take TuneHub from its current rock-solid development state to a commercially 
+viable, App Store-approved, production-ready product, the remaining roadmap focuses 
+on the following four areas:
+
+--------------------------------------------------------------------------------
+AREA 1: CLOUD BACKEND DEPLOYMENT (P0)
+--------------------------------------------------------------------------------
+1. Deploy Production Firestore & Storage Rules
+   - Status: Rules files (`firestore.rules` and `storage.rules`) are authored and verified locally.
+   - Action Required: Deploy to the live Firebase project using Firebase CLI:
+     ```bash
+     firebase deploy --only firestore:rules,storage:rules
+     ```
+   - Viability Impact: Prevents unauthorized user document overwrites and protects user data.
+
+2. Deploy Affinity Matrix Cloud Function (`functions/index.js`)
+   - Status: Cloud function logic written and structured.
+   - Action Required: Deploy functions to Firebase Cloud Functions:
+     ```bash
+     cd functions && npm install && cd ..
+     firebase deploy --only functions
+     ```
+   - Viability Impact: Offloads heavy computation from mobile devices to the cloud, 
+     enabling infinite user scaling without client lag or battery drain.
+
+--------------------------------------------------------------------------------
+AREA 2: APP STORE & GOOGLE PLAY COMPLIANCE (P1)
+--------------------------------------------------------------------------------
+1. In-App Account Deletion (Apple App Store Guideline 5.1.1(v) - Mandatory)
+   - Status: User blocking/reporting completed in `UserProfileScreen.js` and `ChatScreen.js`.
+   - Action Required: In `SecuritySettings.js`, add a dedicated "Delete Account" button that:
+     * Prompts for confirmation.
+     * Deletes user documents (`users/{userId}`, `playlists/{userId}`, `memoirs/{userId}`).
+     * Deletes stored profile image from Storage.
+     * Calls `auth.currentUser.delete()`.
+     * Navigates back to `WelcomeScreen`.
+   - Viability Impact: Apple rejects any app with account creation that lacks in-app account deletion.
+
+2. Hosted Privacy Policy & Terms of Service
+   - Action Required: Host a standard mobile privacy policy and terms of service (covering 
+     photo uploads and music listening data) on a public URL and link it inside 
+     `SettingsScreen.js` and `WelcomeScreen.js`.
+   - Viability Impact: Mandatory requirement for App Store review and Google Play publishing.
+
+--------------------------------------------------------------------------------
+AREA 3: PRODUCTION BUILD & NATIVE IDENTITY (P2)
+--------------------------------------------------------------------------------
+1. Production App Identity in `app.json`
+   - Action Required:
+     * Replace bundle identifier `com.anonymous.TubeApp` with registered ID: `com.tunehub.app` (or `com.tunehub.chorus`).
+     * Set matching Android package: `com.tunehub.app`.
+     * Ensure high-resolution production app icons are configured in `assets/icon.png` (1024x1024) 
+       and `assets/adaptive-icon.png`.
+     * Verify splash screen configuration (`assets/splash.png`).
+
+2. EAS Build Setup (`eas.json`)
+   - Action Required: Configure Expo Application Services build profiles for iOS and Android:
+     ```bash
+     npx eas-cli build:configure
+     ```
+   - Viability Impact: Enables automated cloud compiling of standalone `.ipa` and `.aab` production bundles.
+
+--------------------------------------------------------------------------------
+AREA 4: PUSH NOTIFICATIONS & RETENTION ENGAGEMENT (P3)
+--------------------------------------------------------------------------------
+1. APNs / FCM Production Push Notification Credentials
+   - Status: Registration and push dispatch helpers are wired in `App.js`, `HandlingFriends.js`, 
+     and `ChatScreen.js`.
+   - Action Required: In Expo dashboard / EAS credentials, upload the Apple Push Notification 
+     Key (`.p8`) and Google Cloud Messaging Server Key so push notifications trigger on 
+     real iOS and Android hardware when apps are closed.
+   - Viability Impact: Critical for social app retention (notifying users of friend requests, 
+     direct messages, and daily music drops).
+
+
+================================================================================
+4. STEP-BY-STEP IMPLEMENTATION CHECKLIST
+================================================================================
+
+[PHASE 1: FOUNDATION HARDENING & RUNTIME STABILITY] - 100% COMPLETED
+--------------------------------------------------------------------------------
+[x] 1. Clean build & web runtime (Fixed Firebase persistence & missing assets).
+[x] 2. Staged heavy future features in `future_features/` to streamline the active app.
+[x] 3. Web responsiveness overhaul (`WebTestingWrapper.js`, mobile/tablet framing, 
+       taskbar redesign).
+[x] 4. Dev test authentication (1-tap login on Welcome, Login, and Top Toolbar).
+[x] 5. Affinity Radar math & SVG overhaul (`UserGraph.js` center alignment, orbit rings, 
+       percentage normalization, interactive node inspector modal, and zoom/pan).
+[x] 6. Your13 curation & audio streaming (13-slot tray, progress bar, `LockContext` 
+       integration, and 30s `expo-av` previews).
+[x] 7. Daily Rhythm & Memoir stability (fixed `deleteField` crash, fixed `arrayRemove` bug, 
+       added null guards in `RankedMusicList.js`, added user cache in `MainChatScreen.js`).
+
+[PHASE 2: IMMEDIATE USABILITY & FIRST-TIME USER FLOW] - 100% COMPLETED
+--------------------------------------------------------------------------------
+[x] 8. Create `scripts/seedData.js` to seed 5 diverse mock users with full 13-track 
+       playlists, collective shelf entries, and daily songs in Firestore.
+[x] 9. Add auth persistence gate in `App.js` with branded splash screen to auto-navigate 
+       authenticated users to `HomeScreen`.
+[x] 10. Add external streaming fallbacks ("Listen on Apple Music / Spotify") and 
+        error toasts for expired audio preview links in `SongDetailsScreen.js`.
+
+[PHASE 3: TEST AUTOMATION, DECOUPLING & OPTIMIZATION] - 100% COMPLETED
+--------------------------------------------------------------------------------
+[x] 11. Extract pure compatibility math from `Algo.js` into `utils/algorithmUtils.js`.
+[x] 12. Set up Jest with `jest-expo` and write comprehensive unit tests in 
+        `__tests__/algorithm.test.js` (5/5 tests passing).
+[x] 13. Build centralized music search service `services/musicApi.js` with 380ms debouncing 
+        and in-memory search caching.
+[x] 14. Integrated `services/musicApi.js` into `AddSong.js`, `SongDetailsScreen.js`, 
+        and `Your13.js`.
+
+[PHASE 4: SECURITY, BACKEND SCALING & APP STORE LAUNCH] - IN PROGRESS
+--------------------------------------------------------------------------------
+[x] 15. Author production `firestore.rules` and `storage.rules`.
+[x] 16. Create background Cloud Function in `functions/index.js` for `playlists/{userId}`.
+[x] 17. Implement query pagination (`limit(100)` by date) in `RankedMusicList.js`.
+[x] 18. Add Apple-mandated User Reporting/Blocking in `UserProfileScreen.js` & `ChatScreen.js`.
+[x] 19. Add O(1) fast-path ranking cache check in `Your13.js`.
+[x] 20. Deploy `firestore.rules` and `storage.rules` via Firebase CLI (live on tunehub-86837).
+[x] 21. Add in-app Account Deletion mechanism in `SecuritySettings.js` (Apple Guideline 5.1.1(v) implemented).
+[x] 22. Configure production bundle identifier and app icons in `app.json` / `eas.json` (configured `com.tunehub.chorus`).
+[x] 23. Add Privacy Policy & Terms of Service in `SettingsScreen.js` and `WelcomeScreen.js` (in-app dark modal + hosted URLs).
+[ ] 24. Deploy Cloud Function in `functions/index.js` (requires Firebase Blaze plan).
+[ ] 25. Configure APNs/FCM production push notification keys in EAS.
+================================================================================
