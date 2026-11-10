@@ -16,6 +16,12 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
 import { Feather } from '@expo/vector-icons';
 import { compressImageForUpload } from './ProfileScreen';
+import {
+  uploadAvatarWithFallback,
+  MAX_FIRESTORE_DATA_URL_BYTES,
+} from './utils/avatarUtils';
+
+export { uploadAvatarWithFallback, MAX_FIRESTORE_DATA_URL_BYTES };
 
 export default function UploadProfilePicture({ navigation }) {
   const [selectedUri, setSelectedUri] = useState(null);
@@ -126,6 +132,13 @@ export default function UploadProfilePicture({ navigation }) {
       console.warn('Storage upload error:', error?.code || error?.message);
 
       if (compressed?.dataUrl) {
+        if (compressed.dataUrl.length > MAX_FIRESTORE_DATA_URL_BYTES) {
+          Alert.alert(
+            'Image Too Large',
+            'Selected image is too large for fallback storage. Please choose a smaller photo.'
+          );
+          return;
+        }
         try {
           await setDoc(
             doc(db, 'users', user.uid),

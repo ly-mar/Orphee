@@ -4,6 +4,9 @@ import { auth } from './firebaseConfig';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { loginUser } from './auth-api';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { installWebAlertPolyfill } from './crossPlatformAlert';
+
+installWebAlertPolyfill();
 
 /**
  * WebTestingWrapper:

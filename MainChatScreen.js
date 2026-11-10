@@ -14,6 +14,7 @@ import { db, auth } from './firebaseConfig';
 import { collection, query, where, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 
 const DEFAULT_AVATAR =
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120';
@@ -33,18 +34,18 @@ const MainChatScreen = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     if (!currentUserId) {
       setChats([]);
       setLoading(false);
       return;
     }
 
-    const chatsRef = collection(db, 'chats');
-    const q = query(chatsRef, where('participants', 'array-contains', currentUserId));
-
-    const unsubscribe = onSnapshot(
-      q,
-      async (querySnapshot) => {
+    const unsub = subscribeSafeSnapshot({
+      isReady: Boolean(currentUserId),
+      buildQuery: () => query(collection(db, 'chats'), where('participants', 'array-contains', currentUserId)),
+      onSnapshotFn: onSnapshot,
+      onNext: async (querySnapshot) => {
         try {
           const chatPromises = querySnapshot.docs.map(async (chatDoc) => {
             const chatData = chatDoc.data();
@@ -88,20 +89,29 @@ const MainChatScreen = ({ navigation }) => {
           });
 
           const chatList = await Promise.all(chatPromises);
-          setChats(chatList);
+          if (isMounted) {
+            setChats(chatList);
+          }
         } catch (error) {
           console.error('Error fetching chat data:', error);
         } finally {
+          if (isMounted) {
+            setLoading(false);
+          }
+        }
+      },
+      onError: (err) => {
+        console.warn('Chat listener error:', err.message);
+        if (isMounted) {
           setLoading(false);
         }
       },
-      (err) => {
-        console.warn('Chat listener error:', err.message);
-        setLoading(false);
-      }
-    );
+    });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, [currentUserId]);
 
   const openChat = (chatId, username, otherUserId) => {

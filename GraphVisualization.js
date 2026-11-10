@@ -24,15 +24,19 @@ const GraphVisualization = ({ playlists = [] }) => {
           isCenter: true,
         };
       }
-      const score = matrix[0]?.[idx] || 0;
+      const rawScore = Number.isFinite(matrix[0]?.[idx]) ? matrix[0][idx] : 0;
+      const score = Math.min(1, Math.max(0, rawScore));
       const radius = 50 + (1 - score) * 120;
-      const angle = (idx / Math.max(1, playlists.length - 1)) * 2 * Math.PI;
+      const safeTotal = Math.max(1, playlists.length - 1);
+      const angle = (idx / safeTotal) * 2 * Math.PI;
+      const x = center + radius * Math.cos(angle);
+      const y = center + radius * Math.sin(angle);
       return {
         id: playlist.uid || playlist.username || String(idx),
         label: playlist.username || `User ${idx}`,
         score,
-        x: center + radius * Math.cos(angle),
-        y: center + radius * Math.sin(angle),
+        x: Number.isFinite(x) ? x : center,
+        y: Number.isFinite(y) ? y : center,
         isCenter: false,
       };
     });
@@ -40,8 +44,8 @@ const GraphVisualization = ({ playlists = [] }) => {
     const computedLinks = computedNodes.slice(1).map((n) => ({
       x1: center,
       y1: center,
-      x2: n.x,
-      y2: n.y,
+      x2: Number.isFinite(n.x) ? n.x : center,
+      y2: Number.isFinite(n.y) ? n.y : center,
     }));
 
     return { nodes: computedNodes, links: computedLinks };

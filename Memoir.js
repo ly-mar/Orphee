@@ -27,24 +27,9 @@ import {
 } from 'firebase/firestore';
 import { Feather } from '@expo/vector-icons';
 import Taskbar from './Taskbar';
+import { normalizeTrack, getHighResImage } from './services/musicApi';
 
-export const normalizeTrack = (raw = {}) => ({
-    trackId: raw.trackId || raw.id || Date.now(),
-    trackName: raw.trackName || raw.title || 'Unknown Track',
-    title: raw.trackName || raw.title || 'Unknown Track',
-    artistName: raw.artistName || raw.artist || 'Unknown Artist',
-    artist: raw.artistName || raw.artist || 'Unknown Artist',
-    artworkUrl100:
-        raw.artworkUrl100 || raw.imageUrl || 'https://via.placeholder.com/300',
-    imageUrl:
-        (raw.artworkUrl100 || raw.imageUrl || 'https://via.placeholder.com/300').replace(
-            '100x100',
-            '400x400'
-        ),
-    previewUrl: raw.previewUrl || raw.audioUrl || null,
-    primaryGenreName: raw.primaryGenreName || raw.genre || 'Music',
-    releaseDate: raw.releaseDate || new Date().toISOString(),
-});
+export { normalizeTrack };
 
 const showAlert = (title, message) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {

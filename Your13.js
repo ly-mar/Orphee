@@ -26,6 +26,7 @@ import {
   normalizeTrack as normalizeSong,
   getHighResImage,
 } from './services/musicApi';
+import { createAudioPreviewController } from './audioPreviewController';
 
 /*export const normalizeSong = (item) => ({
   trackId: Number(item.trackId),
@@ -77,33 +78,34 @@ function Your13({ navigation }) {
   const [userId, setUserId] = useState(auth.currentUser?.uid || null);
   const [username, setUsername] = useState(null);
 
-  const soundRef = useRef(null);
   const [playingTrackId, setPlayingTrackId] = useState(null);
   const [loadingTrackId, setLoadingTrackId] = useState(null);
+  const audioControllerRef = useRef(null);
 
   const searchInputRef = useRef(null);
   const { isLocked, lockTime, lockChoices } = useLock();
 
   const stopAndUnloadPreview = useCallback(async () => {
-    if (soundRef.current) {
-      try {
-        await soundRef.current.stopAsync();
-      } catch (_) { }
-      try {
-        await soundRef.current.unloadAsync();
-      } catch (_) { }
-      soundRef.current = null;
+    if (audioControllerRef.current) {
+      await audioControllerRef.current.stop();
     }
     setPlayingTrackId(null);
     setLoadingTrackId(null);
   }, []);
 
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-    }).catch(() => { });
+    audioControllerRef.current = createAudioPreviewController({
+      onStatusChange: (status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setPlayingTrackId(null);
+        }
+      },
+      onError: (msg) => {
+        setLoadingTrackId(null);
+        setPlayingTrackId(null);
+        Alert.alert('Playback Notice', msg);
+      },
+    });
 
     const unsubscribeBlur = navigation.addListener('blur', () => {
       stopAndUnloadPreview();
@@ -118,7 +120,7 @@ function Your13({ navigation }) {
     return () => {
       unsubscribeBlur();
       unsubscribeFocus();
-      stopAndUnloadPreview();
+      audioControllerRef.current?.dispose();
     };
   }, [navigation, stopAndUnloadPreview]);
 
@@ -191,7 +193,7 @@ function Your13({ navigation }) {
   };
 
   const handleTogglePreview = async (song) => {
-    if (!song.previewUrl) {
+    if (!song?.previewUrl) {
       Alert.alert('Preview Unavailable', 'No 30-second audio preview found for this track.');
       return;
     }
@@ -202,22 +204,14 @@ function Your13({ navigation }) {
         return;
       }
 
-      await stopAndUnloadPreview();
       setLoadingTrackId(song.trackId);
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: song.previewUrl },
-        { shouldPlay: true },
-        (status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            setPlayingTrackId(null);
-          }
-        }
-      );
-
-      soundRef.current = sound;
+      const started = await audioControllerRef.current?.play(song.previewUrl);
       setLoadingTrackId(null);
-      setPlayingTrackId(song.trackId);
+      if (started) {
+        setPlayingTrackId(song.trackId);
+      } else {
+        setPlayingTrackId(null);
+      }
     } catch (error) {
       console.error('Error playing inline preview:', error);
       setLoadingTrackId(null);

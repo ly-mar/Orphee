@@ -15,12 +15,13 @@ import { Audio } from 'expo-av';
 import { FontAwesome5 } from '@expo/vector-icons';
 import Taskbar from './Taskbar';
 import { normalizeTrack, getHighResImage } from './services/musicApi';
+import { createAudioPreviewController } from './audioPreviewController';
 
 function SongDetailsScreen({ route, navigation }) {
   const rawSong = route?.params?.song || {};
   const song = normalizeTrack(rawSong);
 
-  const soundRef = useRef(null);
+  const audioControllerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState(0);
@@ -30,25 +31,32 @@ function SongDetailsScreen({ route, navigation }) {
   );
 
   const stopAndUnloadSound = useCallback(async () => {
-    if (soundRef.current) {
-      try {
-        await soundRef.current.stopAsync();
-      } catch (_) { }
-      try {
-        await soundRef.current.unloadAsync();
-      } catch (_) { }
-      soundRef.current = null;
+    if (audioControllerRef.current) {
+      await audioControllerRef.current.stop();
     }
     setIsPlaying(false);
     setPlaybackPosition(0);
   }, []);
 
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-    }).catch(() => { });
+    audioControllerRef.current = createAudioPreviewController({
+      onStatusChange: (status) => {
+        if (status.isLoaded) {
+          setIsPlaying(status.isPlaying);
+          setPlaybackPosition(status.positionMillis || 0);
+          setPlaybackDuration(status.durationMillis || 30000);
+          if (status.didJustFinish) {
+            setIsPlaying(false);
+            setPlaybackPosition(0);
+          }
+        }
+      },
+      onError: (msg) => {
+        setAudioError(msg);
+        setIsPlaying(false);
+        setIsLoadingAudio(false);
+      },
+    });
 
     const unsubscribeBlur = navigation.addListener('blur', () => {
       stopAndUnloadSound();
@@ -56,28 +64,9 @@ function SongDetailsScreen({ route, navigation }) {
 
     return () => {
       unsubscribeBlur();
-      stopAndUnloadSound();
+      audioControllerRef.current?.dispose();
     };
   }, [navigation, stopAndUnloadSound]);
-
-  const onPlaybackStatusUpdate = (status) => {
-    if (!status.isLoaded) {
-      if (status.error) {
-        setAudioError('Preview stream expired or unavailable.');
-        setIsPlaying(false);
-        setIsLoadingAudio(false);
-      }
-      return;
-    }
-    setPlaybackPosition(status.positionMillis || 0);
-    setPlaybackDuration(status.durationMillis || 30000);
-    setIsPlaying(status.isPlaying);
-
-    if (status.didJustFinish) {
-      setIsPlaying(false);
-      setPlaybackPosition(0);
-    }
-  };
 
   const handleTogglePreview = async () => {
     if (!song.previewUrl) {
@@ -87,34 +76,13 @@ function SongDetailsScreen({ route, navigation }) {
 
     setAudioError(null);
 
-    try {
-      if (soundRef.current) {
-        const status = await soundRef.current.getStatusAsync();
-        if (status.isLoaded) {
-          if (status.isPlaying) {
-            await soundRef.current.pauseAsync();
-          } else {
-            if (status.positionMillis >= (status.durationMillis || 29500)) {
-              await soundRef.current.setPositionAsync(0);
-            }
-            await soundRef.current.playAsync();
-          }
-          return;
-        }
-      }
-
+    if (isPlaying) {
+      await stopAndUnloadSound();
+    } else {
       setIsLoadingAudio(true);
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: song.previewUrl },
-        { shouldPlay: true },
-        onPlaybackStatusUpdate
-      );
-      soundRef.current = sound;
+      const started = await audioControllerRef.current?.play(song.previewUrl);
       setIsLoadingAudio(false);
-    } catch (error) {
-      setIsLoadingAudio(false);
-      setIsPlaying(false);
-      setAudioError('Preview stream expired or unavailable.');
+      setIsPlaying(Boolean(started));
     }
   };
 

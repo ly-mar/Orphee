@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import { loadUserProfilePic } from './UploadProfilePicture';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 
 const DEFAULT_AVATAR =
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120';
@@ -35,28 +36,23 @@ const ChatScreen = ({ route, navigation }) => {
   const [otherUserId, setOtherUserId] = useState(routeOtherId || null);
   const userId = auth.currentUser?.uid;
 
-  // 1. Dedicated real-time messages listener
+  // 1. Dedicated real-time messages listener with deterministic teardown guard [BUG-004]
   useEffect(() => {
-    if (!chatId) return;
-
-    const messagesRef = collection(db, 'chats', chatId, 'messages');
-    const q = query(messagesRef, orderBy('timestamp', 'asc'));
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
+    return subscribeSafeSnapshot({
+      isReady: Boolean(chatId),
+      buildQuery: () => query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc')),
+      onSnapshotFn: onSnapshot,
+      onNext: (snapshot) => {
         const chatMessages = snapshot.docs.map((d) => ({
           id: d.id,
           ...d.data(),
         }));
         setMessages(chatMessages);
       },
-      (err) => {
+      onError: (err) => {
         console.warn('Error listening to messages:', err.message);
-      }
-    );
-
-    return () => unsubscribe();
+      },
+    });
   }, [chatId]);
 
   // 2. Single-pass participant & avatar resolution

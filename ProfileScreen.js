@@ -491,6 +491,13 @@ function ProfileScreen({ navigation }) {
 
       // Resilient Fallback for Spark Free Tier Quota Exhaustion (storage/quota-exceeded) or CORS block
       if (compressedPayload?.dataUrl) {
+        if (compressedPayload.dataUrl.length > 700 * 1024) {
+          Alert.alert(
+            'Upload Failed',
+            'Selected photo is too large for fallback storage. Please select a smaller image.'
+          );
+          return;
+        }
         try {
           await setDoc(
             doc(db, 'users', userId),

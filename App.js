@@ -7,6 +7,10 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { installWebAlertPolyfill } from './crossPlatformAlert';
+
+// Install cross-platform Web Alert polyfill at app initialization [BUG-006]
+installWebAlertPolyfill();
 import {
   NavigationContainer,
   createNavigationContainerRef,

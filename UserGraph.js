@@ -29,6 +29,9 @@ import { doc, getDoc, collection, query, where, getDocs, addDoc } from 'firebase
 import { db, auth } from './firebaseConfig';
 import { sendFriendRequest } from './HandlingFriends';
 import { computeSimilarityMatrix } from './utils/algorithmUtils';
+import { computeRadialPosition, sanitizeGraphLayout } from './utils/graphLayoutUtils';
+
+export { computeRadialPosition, sanitizeGraphLayout };
 
 const WORLD_SIZE = 720;
 const CENTER = WORLD_SIZE / 2; // (360, 360)
@@ -287,9 +290,9 @@ function UserGraph({ route, navigation }) {
         rank: index + 1,
         rankLabel,
         ringColor,
-        x,
-        y,
-        radius,
+        x: Number.isFinite(x) ? x : CENTER,
+        y: Number.isFinite(y) ? y : CENTER,
+        radius: Number.isFinite(radius) ? radius : MIN_RADIUS,
       };
     });
   }, [peerUsers, hydratedNames, hydratedUids, hydratedImages]);

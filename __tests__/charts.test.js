@@ -1,5 +1,6 @@
 // __tests__/charts.test.js
 import { aggregateCommunity13Charts } from '../utils/chartUtils';
+import { sanitizeGraphLayout, computeRadialPosition } from '../utils/graphLayoutUtils';
 
 describe('TuneHub Community Charts Engine (13 Songs Model)', () => {
   const user1 = {
@@ -134,5 +135,37 @@ describe('TuneHub Community Charts Engine (13 Songs Model)', () => {
     expect(result.totalCurators).toBe(1);
     expect(result.rankedSongs).toHaveLength(1);
     expect(result.rankedSongs[0].trackName).toBe('Real Track');
+  });
+});
+
+describe('Affinity Graph Math & NaN Resilience [BUG-002]', () => {
+  test('returns finite center coordinates when playlist or compatibility score is empty/NaN', () => {
+    const posEmpty = computeRadialPosition({ score: NaN, index: 0, total: 0, width: 400, height: 400 });
+    expect(Number.isFinite(posEmpty.x)).toBe(true);
+    expect(Number.isFinite(posEmpty.y)).toBe(true);
+    expect(posEmpty).toEqual({ x: 200, y: 200 });
+  });
+
+  test('sanitizes d3-force nodes and links with NaN, null, or Infinity coordinates', () => {
+    const rawNodes = [
+      { id: 'me', x: undefined, y: NaN, radius: NaN },
+      { id: 'twin-1', x: Infinity, y: -Infinity, radius: 0 },
+    ];
+    const rawLinks = [
+      { source: { x: NaN, y: 100 }, target: { x: 200, y: undefined } },
+    ];
+
+    const { nodes, links } = sanitizeGraphLayout(rawNodes, rawLinks, 360, 640);
+    nodes.forEach((n) => {
+      expect(Number.isFinite(n.x)).toBe(true);
+      expect(Number.isFinite(n.y)).toBe(true);
+      expect(n.radius).toBeGreaterThan(0);
+    });
+    links.forEach((l) => {
+      expect(Number.isFinite(l.x1)).toBe(true);
+      expect(Number.isFinite(l.y1)).toBe(true);
+      expect(Number.isFinite(l.x2)).toBe(true);
+      expect(Number.isFinite(l.y2)).toBe(true);
+    });
   });
 });
