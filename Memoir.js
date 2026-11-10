@@ -1,5 +1,5 @@
 // Memoir.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     StyleSheet,
@@ -28,6 +28,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import Taskbar from './Taskbar';
 import { normalizeTrack, getHighResImage } from './services/musicApi';
+import { createAudioPreviewController } from './audioPreviewController';
 
 export { normalizeTrack };
 
@@ -48,6 +49,23 @@ export default function Memoir({ route, navigation }) {
     const [loadingSearch, setLoadingSearch] = useState(false);
     const [saving, setSaving] = useState(false);
     const [username, setUsername] = useState('Sigma');
+
+    const audioControllerRef = useRef(null);
+    if (!audioControllerRef.current) {
+        audioControllerRef.current = createAudioPreviewController({
+            onError: (msg) => console.warn(msg),
+        });
+    }
+
+    useEffect(() => {
+        const unsubscribeBlur = navigation?.addListener?.('blur', () => {
+            audioControllerRef.current?.stop();
+        });
+        return () => {
+            unsubscribeBlur?.();
+            audioControllerRef.current?.dispose();
+        };
+    }, [navigation]);
 
     useEffect(() => {
         const loadUser = async () => {

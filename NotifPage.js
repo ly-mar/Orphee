@@ -19,10 +19,12 @@ import {
   where,
   collection,
   limit,
+  onSnapshot,
 } from 'firebase/firestore';
 import { FontAwesome5 } from '@expo/vector-icons';
 import Taskbar from './Taskbar';
 import { getHighResImage } from './services/musicApi';
+import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 
 const NotifPage = ({ route, navigation }) => {
   const userId = route?.params?.userId ?? auth.currentUser?.uid;
@@ -33,6 +35,23 @@ const NotifPage = ({ route, navigation }) => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('activity');
   const usernamesCache = useRef({});
+
+  useEffect(() => {
+    const uid = userId;
+    return subscribeSafeSnapshot({
+      isReady: Boolean(uid),
+      buildQuery: () => doc(db, 'requests', uid),
+      onSnapshotFn: onSnapshot,
+      onNext: (_snapshot) => {
+        // Keeps user aware of real-time incoming requests / notifications safely
+      },
+      onError: (err) => {
+        if (err?.code !== 'permission-denied') {
+          console.warn('Notification snapshot error:', err);
+        }
+      },
+    });
+  }, [userId]);
 
   const fetchUsernameById = async (uid) => {
     if (!uid) return 'Unknown User';

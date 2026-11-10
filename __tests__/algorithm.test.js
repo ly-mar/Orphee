@@ -5,7 +5,9 @@ import {
     levenshteinDistance,
     computePairwiseAffinity,
     computeSimilarityMatrix,
+    sanitizeCompatibilityScore,
 } from '../utils/algorithmUtils';
+import { clampProgressValue } from '../CustomProgressBar';
 
 describe('TuneHub Sonic Compatibility Engine (algorithmUtils)', () => {
     const baseUser13 = {
@@ -87,5 +89,24 @@ describe('TuneHub Sonic Compatibility Engine (algorithmUtils)', () => {
         expect(jaccardSimilarity([], [])).toBe(0);
         expect(cosineSimilarity({}, {})).toBe(0);
         expect(levenshteinDistance('', '')).toBe(0);
+    });
+});
+
+describe('Sonic Twins Compatibility & Progress Bar NaN Guard [BUG-010]', () => {
+    test('clampProgressValue normalizes NaN, Infinity, negative, and >1 values into [0, 1]', () => {
+        expect(clampProgressValue(NaN)).toBe(0);
+        expect(clampProgressValue(undefined)).toBe(0);
+        expect(clampProgressValue(-0.5)).toBe(0);
+        expect(clampProgressValue(Infinity)).toBe(0);
+        expect(clampProgressValue(1.5)).toBe(1);
+        expect(clampProgressValue(0.75)).toBe(0.75);
+    });
+
+    test('sanitizeCompatibilityScore normalizes invalid and out-of-bound scores', () => {
+        expect(sanitizeCompatibilityScore(NaN)).toBe(0);
+        expect(sanitizeCompatibilityScore(undefined)).toBe(0);
+        expect(sanitizeCompatibilityScore(-10)).toBe(0);
+        expect(sanitizeCompatibilityScore(150)).toBe(100);
+        expect(sanitizeCompatibilityScore(85.46)).toBe(85.5);
     });
 });

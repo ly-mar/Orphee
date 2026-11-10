@@ -17,6 +17,9 @@ import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firesto
 import { FontAwesome5 } from '@expo/vector-icons';
 import Taskbar from './Taskbar';
 import { sendFriendRequest } from './HandlingFriends';
+import { sanitizeCompatibilityScore } from './utils/algorithmUtils';
+
+export { sanitizeCompatibilityScore };
 
 const DEFAULT_AVATAR =
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120';
@@ -199,7 +202,7 @@ function RankedUsers({ route, navigation }) {
   const navigateToGraph = () => {
     const enrichedUsers = rankedUsers.map((u) => {
       const key = u.uname || u.uid;
-      const pct = Math.round((Number(u.totalScore) || 0) * 100);
+      const pct = sanitizeCompatibilityScore(Math.round((Number(u.totalScore) || 0) * 100));
       return {
         ...u,
         uname: key,
@@ -247,7 +250,7 @@ function RankedUsers({ route, navigation }) {
             key === 'current_user' ||
             userIds[key] === userId ||
             (currentUsername && displayName === currentUsername);
-          const pct = Math.round((Number(item.totalScore) || 0) * 100);
+          const pct = sanitizeCompatibilityScore(Math.round((Number(item.totalScore) || 0) * 100));
           const accent = getRankAccent(index);
 
           return (

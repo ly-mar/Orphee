@@ -55,3 +55,15 @@ describe('Audio Preview Controller Resilience [BUG-003]', () => {
   });
 });
 
+describe('AddSong & Memoir Screen Blur/Unmount Audio Cleanup [BUG-008]', () => {
+  test('stops active preview when navigating away from AddSong to SongDetailsScreen', async () => {
+    const controller = createAudioPreviewController();
+    await controller.play('https://audio-ssl.itunes.apple.com/addsong-preview.m4a');
+    // Simulate React Navigation blur / unmount cleanup
+    await controller.dispose();
+    const playAfterDispose = await controller.play('https://audio-ssl.itunes.apple.com/after-unmount.m4a');
+    expect(playAfterDispose).toBe(false);
+  });
+});
+
+

@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollView, StyleSheet, SafeAreaView, View, Alert, Image, Dimensions } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { db, auth } from './firebaseConfig';
 import { collection, getDocs, updateDoc, doc, setDoc, getDoc, query, orderBy } from 'firebase/firestore';
 import Taskbar from './Taskbar';
+import { createAsyncActionLock } from './utils/actionLockUtils';
 
 const windowWidth = Dimensions.get('window').width;
 
@@ -24,6 +25,7 @@ function Pickerchoosers() {
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const userId = auth.currentUser?.uid;
+  const actionLockRef = useRef(createAsyncActionLock());
 
   const loadSongs = async () => {
     try {
@@ -53,7 +55,7 @@ function Pickerchoosers() {
     }, [themeId])
   );
 
-  const addOrIncrementSong = async (song) => {
+  const addOrIncrementSong = (song) => {
     if (!userId) {
       console.error("User is not logged in.");
       return;
@@ -61,33 +63,35 @@ function Pickerchoosers() {
 
     const songId = `${song.trackName}-${song.artistName}`; // Unique ID for song
 
-    try {
-      const songDocRef = doc(db, 'collective', themeId, 'songs', songId);
-      const voteDocRef = doc(db, 'collective', themeId, 'songs', songId, 'votes', userId);
-      const existingVote = await getDoc(voteDocRef);
+    return actionLockRef.current(async () => {
+      try {
+        const songDocRef = doc(db, 'collective', themeId, 'songs', songId);
+        const voteDocRef = doc(db, 'collective', themeId, 'songs', songId, 'votes', userId);
+        const existingVote = await getDoc(voteDocRef);
 
-      // Check if the user has already voted for this song
-      if (existingVote.exists()) {
-        Alert.alert("Vote Already Cast", "You have already voted for this song.");
-        return; // User has already voted
+        // Check if the user has already voted for this song
+        if (existingVote.exists()) {
+          Alert.alert("Vote Already Cast", "You have already voted for this song.");
+          return; // User has already voted
+        }
+
+        // Register the user's vote
+        await setDoc(voteDocRef, { userId: userId, votedAt: new Date() });
+
+        // Update the song score
+        const existingSong = await getDoc(songDocRef);
+        if (existingSong.exists()) {
+          await updateDoc(songDocRef, { score: existingSong.data().score + 1 });
+        } else {
+          console.error('Song not found, which should not happen in this context.');
+        }
+
+        // Reload songs after adding or updating
+        loadSongs();
+      } catch (error) {
+        console.error('Error adding or updating song in Firestore:', error);
       }
-
-      // Register the user's vote
-      await setDoc(voteDocRef, { userId: userId, votedAt: new Date() });
-
-      // Update the song score
-      const existingSong = await getDoc(songDocRef);
-      if (existingSong.exists()) {
-        await updateDoc(songDocRef, { score: existingSong.data().score + 1 });
-      } else {
-        console.error('Song not found, which should not happen in this context.');
-      }
-
-      // Reload songs after adding or updating
-      loadSongs();
-    } catch (error) {
-      console.error('Error adding or updating song in Firestore:', error);
-    }
+    });
   };
 
   return (

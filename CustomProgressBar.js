@@ -1,10 +1,17 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 
+export function clampProgressValue(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.min(1, num));
+}
+
 const CustomProgressBar = ({ progress }) => {
+  const clamped = clampProgressValue(progress);
   return (
     <View style={styles.progressBarContainer}>
-      <View style={[styles.progressBar, { width: `${progress}%` }]} />
+      <View style={[styles.progressBar, { width: `${clamped * 100}%` }]} />
     </View>
   );
 };

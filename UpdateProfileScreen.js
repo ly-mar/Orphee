@@ -1,55 +1,66 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, FlatList, Image, Button, Alert, ActivityIndicator, SafeAreaView, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { deleteImage } from './UploadProfilePicture'; // Import the deleteImage function
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, auth } from './firebaseConfig';
+import { subscribeSafeSnapshot } from './firestoreListenerUtils';
+import { createAsyncActionLock } from './utils/actionLockUtils';
 
 const UpdateProfileScreen = ({ route, navigation }) => {
   const userId = route?.params?.userId ?? auth.currentUser?.uid;
   const [mediaList, setMediaList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const actionLockRef = useRef(createAsyncActionLock());
 
-  
-
-  // Fetch user's images from Firestore
+  // Fetch user's images from Firestore with safe teardown [BUG-009]
   useEffect(() => {
-
     if (!userId) {
-    return; // Return early if userId is undefined
-  }
-    
-    const imagesQuery = query(
-      collection(db, 'images'),
-      where('userId', '==', userId),
-      orderBy('userId'),
-      orderBy('uploadedAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(imagesQuery, (snapshot) => {
-      const userMedia = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setMediaList(userMedia);
       setLoading(false);
-    });
+      return;
+    }
 
-    return () => unsubscribe();
+    return subscribeSafeSnapshot({
+      isReady: Boolean(userId),
+      buildQuery: () =>
+        query(
+          collection(db, 'images'),
+          where('userId', '==', userId),
+          orderBy('userId'),
+          orderBy('uploadedAt', 'desc')
+        ),
+      onSnapshotFn: onSnapshot,
+      onNext: (snapshot) => {
+        const userMedia = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setMediaList(userMedia);
+        setLoading(false);
+      },
+      onError: (err) => {
+        if (err?.code !== 'permission-denied') {
+          console.warn('UpdateProfileScreen listener error:', err);
+        }
+        setLoading(false);
+      },
+    });
   }, [userId]);
 
-  // Handle deleting the image
-  const handleDelete = async (docId, downloadURL) => {
-    try {
-      setDeleting(true);
-      await deleteImage(docId, downloadURL, userId);
-      Alert.alert('Success', 'Image deleted successfully');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to delete image');
-      console.error('Error deleting image:', error);
-    } finally {
-      setDeleting(false);
-    }
+  // Handle deleting the image with rapid double-tap lock [BUG-011]
+  const handleDelete = (docId, downloadURL) => {
+    return actionLockRef.current(async () => {
+      try {
+        setDeleting(true);
+        await deleteImage(docId, downloadURL, userId);
+        Alert.alert('Success', 'Image deleted successfully');
+      } catch (error) {
+        Alert.alert('Error', 'Failed to delete image');
+        console.error('Error deleting image:', error);
+      } finally {
+        setDeleting(false);
+      }
+    });
   };
 
   // Render each item in the FlatList

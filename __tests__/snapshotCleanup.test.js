@@ -51,3 +51,36 @@ describe('Real-Time Snapshot Listener Safety [BUG-004]', () => {
   });
 });
 
+describe('Friend Requests & Notification Snapshot Resilience [BUG-009]', () => {
+  test('ignores late snapshot callbacks and permission-denied errors after unmount/logout', () => {
+    let capturedNext;
+    let capturedError;
+    const mockUnsub = jest.fn();
+    const mockOnSnapshot = jest.fn((_q, onNext, onError) => {
+      capturedNext = onNext;
+      capturedError = onError;
+      return mockUnsub;
+    });
+
+    const onNextSpy = jest.fn();
+    const onErrorSpy = jest.fn();
+
+    const cleanup = subscribeSafeSnapshot({
+      isReady: true,
+      buildQuery: () => 'requests/user-123',
+      onSnapshotFn: mockOnSnapshot,
+      onNext: onNextSpy,
+      onError: onErrorSpy,
+    });
+
+    cleanup(); // Unmount / logout occurs
+    capturedNext({ docs: [] });
+    capturedError(new Error('permission-denied'));
+
+    expect(mockUnsub).toHaveBeenCalledTimes(1);
+    expect(onNextSpy).not.toHaveBeenCalled();
+    expect(onErrorSpy).not.toHaveBeenCalled();
+  });
+});
+
+

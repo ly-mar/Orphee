@@ -1,6 +1,7 @@
-import { doc, getDoc, updateDoc, deleteField, setDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteField, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from './firebaseConfig';
 import { Alert } from 'react-native';
+import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 
 // Helper function to fetch user details by userId
 export const fetchUserDetails = async (userId) => {
@@ -247,4 +248,37 @@ export async function sendExpoPushNotification(targetUserId, title, body, data =
       }),
     });
   } catch (_) { }
+}
+
+// Subscribe to real-time friend requests with safe unmount/logout teardown [BUG-009]
+export function subscribeUserRequests(userId, onUpdate, onError) {
+  return subscribeSafeSnapshot({
+    isReady: Boolean(userId),
+    buildQuery: () => doc(db, 'requests', userId),
+    onSnapshotFn: onSnapshot,
+    onNext: (snapshot) => {
+      if (snapshot && typeof snapshot.data === 'function') {
+        const {
+          followers = {},
+          following = {},
+          sentRequests = {},
+          receivedRequests = {},
+        } = snapshot.data() || {};
+        onUpdate?.({
+          followers: Object.entries(followers),
+          following: Object.entries(following),
+          sentRequests: Object.entries(sentRequests),
+          receivedRequests: Object.entries(receivedRequests),
+        });
+      } else {
+        onUpdate?.({ followers: [], following: [], sentRequests: [], receivedRequests: [] });
+      }
+    },
+    onError: (err) => {
+      if (err?.code !== 'permission-denied') {
+        console.warn('subscribeUserRequests error:', err);
+        onError?.(err);
+      }
+    },
+  });
 }

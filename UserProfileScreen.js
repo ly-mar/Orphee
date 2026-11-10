@@ -28,6 +28,7 @@ import { db, auth } from './firebaseConfig';
 import Taskbar from './Taskbar';
 import moment from 'moment';
 import { sendFriendRequest } from './HandlingFriends';
+import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 import FadingCarousel from './FadingCarousel';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -160,31 +161,35 @@ const UserProfileScreen = ({ route, navigation }) => {
   );
 
   useEffect(() => {
-    if (!userId) return;
-    try {
-      const imagesQuery = query(
-        collection(db, 'images'),
-        where('userId', '==', userId),
-        orderBy('uploadedAt', 'desc')
-      );
-
-      const unsubscribe = onSnapshot(
-        imagesQuery,
-        (snapshot) => {
-          const userMedia = snapshot.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }));
-          setMediaList(userMedia);
-          setLoading(false);
-        },
-        () => setLoading(false)
-      );
-
-      return () => unsubscribe();
-    } catch (_) {
+    if (!userId) {
       setLoading(false);
+      return;
     }
+
+    return subscribeSafeSnapshot({
+      isReady: Boolean(userId),
+      buildQuery: () =>
+        query(
+          collection(db, 'images'),
+          where('userId', '==', userId),
+          orderBy('uploadedAt', 'desc')
+        ),
+      onSnapshotFn: onSnapshot,
+      onNext: (snapshot) => {
+        const userMedia = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
+        setMediaList(userMedia);
+        setLoading(false);
+      },
+      onError: (err) => {
+        if (err?.code !== 'permission-denied') {
+          console.warn('UserProfileScreen listener error:', err);
+        }
+        setLoading(false);
+      },
+    });
   }, [userId]);
 
   const getFriendRequestButtonText = () => {

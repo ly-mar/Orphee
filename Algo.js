@@ -11,6 +11,7 @@ import {
   calculateReleaseYearAffinity,
   computePairwiseAffinity,
   computeSimilarityMatrix,
+  sanitizeCompatibilityScore,
 } from './utils/algorithmUtils';
 
 export {
@@ -21,6 +22,7 @@ export {
   calculateReleaseYearAffinity,
   computePairwiseAffinity,
   computeSimilarityMatrix,
+  sanitizeCompatibilityScore,
 };
 
 const PlaylistComponent = () => {

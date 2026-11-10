@@ -1,5 +1,5 @@
 // TheCollective.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -21,6 +21,7 @@ import {
   startAfter,
 } from 'firebase/firestore';
 import Taskbar from './Taskbar';
+import { createAsyncActionLock } from './utils/actionLockUtils';
 
 const PAGE_SIZE = 20;
 
@@ -56,6 +57,7 @@ function TheCollective() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const navigation = useNavigation();
+  const actionLockRef = useRef(createAsyncActionLock());
 
   const fetchInitialThemes = useCallback(async () => {
     try {
@@ -88,35 +90,37 @@ function TheCollective() {
     fetchInitialThemes();
   }, [fetchInitialThemes]);
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = () => {
     if (loadingMore || !hasMore || !lastVisibleDoc) return;
-    try {
-      setLoadingMore(true);
-      const nextQ = query(
-        collection(db, 'collective'),
-        orderBy('name'),
-        startAfter(lastVisibleDoc),
-        limit(PAGE_SIZE)
-      );
-      const snap = await getDocs(nextQ);
+    return actionLockRef.current(async () => {
+      try {
+        setLoadingMore(true);
+        const nextQ = query(
+          collection(db, 'collective'),
+          orderBy('name'),
+          startAfter(lastVisibleDoc),
+          limit(PAGE_SIZE)
+        );
+        const snap = await getDocs(nextQ);
 
-      if (!snap.empty) {
-        const nextItems = snap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().name || d.id,
-        }));
-        setThemes((prev) => [...prev, ...nextItems]);
-        setLastVisibleDoc(snap.docs[snap.docs.length - 1]);
-        setHasMore(snap.docs.length === PAGE_SIZE);
-      } else {
+        if (!snap.empty) {
+          const nextItems = snap.docs.map((d) => ({
+            id: d.id,
+            name: d.data().name || d.id,
+          }));
+          setThemes((prev) => [...prev, ...nextItems]);
+          setLastVisibleDoc(snap.docs[snap.docs.length - 1]);
+          setHasMore(snap.docs.length === PAGE_SIZE);
+        } else {
+          setHasMore(false);
+        }
+      } catch (error) {
+        console.error('Error paginating collective themes:', error);
         setHasMore(false);
+      } finally {
+        setLoadingMore(false);
       }
-    } catch (error) {
-      console.error('Error paginating collective themes:', error);
-      setHasMore(false);
-    } finally {
-      setLoadingMore(false);
-    }
+    });
   };
 
   const renderThemeItem = ({ item }) => (

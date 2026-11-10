@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { queryFriendsOrRequests, acceptFriendRequest, rejectOrCancelRequest, unfriendUser, fetchUserDetails } from './HandlingFriends';
-import { auth } from './firebaseConfig';
+import { auth, db } from './firebaseConfig';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 import { useNavigation } from '@react-navigation/native';
 import { FontAwesome5 } from '@expo/vector-icons';
 
@@ -43,7 +45,42 @@ const FriendsScreen = ({ route }) => {
     };
 
   useEffect(() => {
-    fetchData();
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+    return subscribeSafeSnapshot({
+      isReady: Boolean(userId),
+      buildQuery: () => doc(db, 'requests', userId),
+      onSnapshotFn: onSnapshot,
+      onNext: (snapshot) => {
+        if (snapshot && typeof snapshot.data === 'function') {
+          const data = snapshot.data() || {};
+          const {
+            followers = {},
+            following = {},
+            sentRequests = {},
+            receivedRequests = {}
+          } = data;
+          setFollowers(Object.entries(followers));
+          setFollowing(Object.entries(following));
+          setSentRequests(Object.entries(sentRequests));
+          setReceivedRequests(Object.entries(receivedRequests));
+        } else {
+          setFollowers([]);
+          setFollowing([]);
+          setSentRequests([]);
+          setReceivedRequests([]);
+        }
+        setLoading(false);
+      },
+      onError: (err) => {
+        if (err?.code !== 'permission-denied') {
+          console.warn('FriendsScreen snapshot error:', err);
+        }
+        fetchData();
+      },
+    });
   }, [userId]);
 
   const handleAcceptRequest = async (userId, requesterUid) => {

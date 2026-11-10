@@ -1,6 +1,9 @@
 // ThemeDetails.js - Updated to store image paths as strings
 import { db } from './firebaseConfig';
 import { collection, setDoc, doc } from 'firebase/firestore';
+import { createAsyncActionLock } from './utils/actionLockUtils';
+
+const populateLock = createAsyncActionLock();
 
 const themes = [
   { id: 'child_of_the_80s', name: "I'm a child of the 80s" },
@@ -21,14 +24,16 @@ const themes = [
 
 
 export const populateThemes = async () => {
-  try {
-    const collectionRef = collection(db, 'collective');
-    for (let theme of themes) {
-      const themeDocRef = doc(collectionRef, theme.id);
-      await setDoc(themeDocRef, { name: theme.name, imagePath: theme.imagePath, createdAt: new Date() });
+  return populateLock(async () => {
+    try {
+      const collectionRef = collection(db, 'collective');
+      for (let theme of themes) {
+        const themeDocRef = doc(collectionRef, theme.id);
+        await setDoc(themeDocRef, { name: theme.name, imagePath: theme.imagePath, createdAt: new Date() });
+      }
+      console.log('Themes have been added to Firestore');
+    } catch (error) {
+      console.error('Error adding themes to Firestore:', error);
     }
-    console.log('Themes have been added to Firestore');
-  } catch (error) {
-    console.error('Error adding themes to Firestore:', error);
-  }
+  });
 };

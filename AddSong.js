@@ -1,5 +1,5 @@
 // AddSong.js
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -22,6 +22,8 @@ import {
   normalizeTrack,
   getHighResImage,
 } from './services/musicApi';
+import { createAudioPreviewController } from './audioPreviewController';
+import { createAsyncActionLock } from './utils/actionLockUtils';
 
 function AddSong() {
   const navigation = useNavigation();
@@ -34,6 +36,24 @@ function AddSong() {
   const [error, setError] = useState('');
 
   const userId = auth.currentUser?.uid;
+  const submitLockRef = useRef(createAsyncActionLock());
+
+  const audioControllerRef = useRef(null);
+  if (!audioControllerRef.current) {
+    audioControllerRef.current = createAudioPreviewController({
+      onError: (msg) => console.warn(msg),
+    });
+  }
+
+  useEffect(() => {
+    const unsubscribeBlur = navigation?.addListener?.('blur', () => {
+      audioControllerRef.current?.stop();
+    });
+    return () => {
+      unsubscribeBlur?.();
+      audioControllerRef.current?.dispose();
+    };
+  }, [navigation]);
 
   const debouncedFetcher = useMemo(
     () =>
@@ -66,53 +86,55 @@ function AddSong() {
     }
   };
 
-  const addSearchedSong = async (rawSong) => {
+  const addSearchedSong = (rawSong) => {
     if (!userId) {
       Alert.alert('Authentication Required', 'Please sign in to contribute songs.');
       return;
     }
 
-    const song = normalizeTrack(rawSong);
-    const safeSongId = song.trackId
-      ? `track_${song.trackId}`
-      : `${song.trackName}_${song.artistName}`.replace(/[\/.#$\[\]]+/g, '_');
+    return submitLockRef.current(async () => {
+      const song = normalizeTrack(rawSong);
+      const safeSongId = song.trackId
+        ? `track_${song.trackId}`
+        : `${song.trackName}_${song.artistName}`.replace(/[\/.#$\[\]]+/g, '_');
 
-    try {
-      const songDocRef = doc(db, 'collective', themeId, 'songs', safeSongId);
-      const voteDocRef = doc(
-        db,
-        'collective',
-        themeId,
-        'songs',
-        safeSongId,
-        'votes',
-        userId
-      );
-      const existingVote = await getDoc(voteDocRef);
+      try {
+        const songDocRef = doc(db, 'collective', themeId, 'songs', safeSongId);
+        const voteDocRef = doc(
+          db,
+          'collective',
+          themeId,
+          'songs',
+          safeSongId,
+          'votes',
+          userId
+        );
+        const existingVote = await getDoc(voteDocRef);
 
-      if (existingVote.exists()) {
-        Alert.alert('Vote Already Cast', 'You have already voted for this song.');
-        return;
+        if (existingVote.exists()) {
+          Alert.alert('Vote Already Cast', 'You have already voted for this song.');
+          return;
+        }
+
+        await setDoc(voteDocRef, { userId, votedAt: new Date().toISOString() });
+
+        const existingSong = await getDoc(songDocRef);
+        if (existingSong.exists()) {
+          await updateDoc(songDocRef, { score: increment(1) });
+        } else {
+          await setDoc(songDocRef, {
+            ...song,
+            score: 1,
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        navigation.navigate('Pickerchoosers', { themeId, refresh: true });
+      } catch (err) {
+        console.error('Error adding song to Firestore:', err);
+        Alert.alert('Error', 'Could not add song to The Collective.');
       }
-
-      await setDoc(voteDocRef, { userId, votedAt: new Date().toISOString() });
-
-      const existingSong = await getDoc(songDocRef);
-      if (existingSong.exists()) {
-        await updateDoc(songDocRef, { score: increment(1) });
-      } else {
-        await setDoc(songDocRef, {
-          ...song,
-          score: 1,
-          createdAt: new Date().toISOString(),
-        });
-      }
-
-      navigation.navigate('Pickerchoosers', { themeId, refresh: true });
-    } catch (err) {
-      console.error('Error adding song to Firestore:', err);
-      Alert.alert('Error', 'Could not add song to The Collective.');
-    }
+    });
   };
 
   return (

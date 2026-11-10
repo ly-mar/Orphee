@@ -175,3 +175,16 @@ export function computeSimilarityMatrix(
         })
     );
 }
+
+// Guard compatibility scores and percentage formatting against NaN on empty playlists [BUG-010]
+export function sanitizeCompatibilityScore(rawScore) {
+    const num = Number(rawScore);
+    if (!Number.isFinite(num) || num < 0) return 0;
+    return Math.min(100, Math.round(num * 10) / 10);
+}
+
+export function clampProgressValue(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    return Math.max(0, Math.min(1, num));
+}

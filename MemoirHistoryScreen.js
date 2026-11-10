@@ -11,11 +11,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { IconButton, Button, Modal, Portal } from 'react-native-paper';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { auth, db } from './firebaseConfig';
 import Taskbar from './Taskbar';
-import { normalizeTrack } from './Memoir';
+import { normalizeTrack } from './services/musicApi';
+import { loadUserMemoirHistory } from './utils/memoirUtils';
+
+export { loadUserMemoirHistory };
 
 const getHighResImage = (imageUrl) => {
   if (!imageUrl) return 'https://via.placeholder.com/400';
@@ -44,28 +47,38 @@ const MemoirHistoryScreen = ({ route, navigation }) => {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchMemoirsFromFirestore = async () => {
       if (!userId) {
         setLoading(false);
         return;
       }
       try {
-        const userRef = doc(db, 'memoirs', userId);
-        const snap = await getDoc(userRef);
-        if (snap.exists() && Array.isArray(snap.data()?.pastMemoirs)) {
-          const sorted = [...snap.data().pastMemoirs].sort(
-            (a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)
-          );
-          setPastMemoirs(sorted);
+        const history = await loadUserMemoirHistory({
+          uid: userId,
+          fetchUserDoc: (uid) => getDoc(doc(db, 'memoirs', uid)),
+          fetchRootCollection: async (uid) => {
+            const q = query(collection(db, 'memoirs'), where('userId', '==', uid));
+            const snap = await getDocs(q);
+            return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          },
+        });
+        if (isMounted) {
+          setPastMemoirs(history);
         }
       } catch (error) {
         console.error('Error loading memoir history:', error);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchMemoirsFromFirestore();
+    return () => {
+      isMounted = false;
+    };
   }, [userId]);
 
   const deleteMemoir = async () => {
