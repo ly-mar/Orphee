@@ -1,89 +1,95 @@
 // Taskbar.js
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, SafeAreaView, Text } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 
-const Taskbar = () => {
-  const navigation = useNavigation();
+export default function Taskbar({ navigation: propNavigation }) {
+  const hookNavigation = useNavigation();
+  const navigation = propNavigation || hookNavigation;
+
+  let currentRouteName = 'ProfileScreen';
+  try {
+    const route = useRoute();
+    if (route?.name) currentRouteName = route.name;
+  } catch (_) { }
+
+  const navItems = [
+    { name: 'Home', icon: 'home', lib: 'Feather' },
+    { name: 'Your13', icon: 'disc', lib: 'Feather' },
+    //{ name: 'Algo', icon: 'repeat', lib: 'Feather' },
+    { name: 'Memoir', icon: 'book', lib: 'Feather' },
+    { name: 'ProfileScreen', icon: 'person', lib: 'Ionicons' },
+  ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.taskbarWrapper}>
-        <View style={styles.taskbar}>
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
-            <MaterialCommunityIcons name="home-variant" size={22} color="#FFFFFF" />
-            <Text style={styles.navLabel}>Home</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('UserSearchScreen')}>
-            <MaterialCommunityIcons name="account-search-outline" size={22} color="#94A3B8" />
-            <Text style={styles.navLabel}>Search</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Profile')}>
-            <MaterialCommunityIcons name="account-circle-outline" size={22} color="#94A3B8" />
-            <Text style={styles.navLabel}>Profile</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.chartsItem} onPress={() => navigation.navigate('RankedMusicList')}>
-            <MaterialCommunityIcons name="chart-box-outline" size={20} color="#FF8C00" />
-            <Text style={styles.chartsText}>Charts</Text>
-          </TouchableOpacity>
-        </View>
+    <View style={styles.floatingDockWrapper} pointerEvents="box-none">
+      <View style={styles.pillContainer}>
+        {navItems.map((item) => {
+          const isActive = currentRouteName === item.name;
+          return (
+            <TouchableOpacity
+              key={item.name}
+              style={[styles.navItem, isActive && styles.navItemActiveCircle]}
+              onPress={() => navigation.navigate(item.name)}
+              activeOpacity={0.85}
+            >
+              {item.lib === 'Ionicons' ? (
+                <Ionicons
+                  name={item.icon}
+                  size={20}
+                  color={isActive ? '#0B0C10' : '#CBD5E1'}
+                />
+              ) : (
+                <Feather
+                  name={item.icon}
+                  size={20}
+                  color={isActive ? '#0B0C10' : '#CBD5E1'}
+                />
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </View>
-    </SafeAreaView>
+    </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  safeArea: {
-    backgroundColor: '#0D1017',
-    borderTopWidth: 1,
-    borderTopColor: '#1A202C',
-  },
-  taskbarWrapper: {
-    width: '100%',
+  floatingDockWrapper: {
+    position: 'absolute',
+    bottom: 18,
+    left: 0,
+    right: 0,
     alignItems: 'center',
+    zIndex: 50,
   },
-  taskbar: {
+  pillContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
-    width: '100%',
-    maxWidth: 480,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(28, 30, 38, 0.94)',
+    width: '90%',
+    maxWidth: 440,
+    height: 68,
+    borderRadius: 34,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 10,
   },
   navItem: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 8,
   },
-  navLabel: {
-    color: '#CBD5E1',
-    fontSize: 11,
-    fontWeight: '500',
-    marginTop: 3,
-  },
-  chartsItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E1710',
-    borderWidth: 1,
-    borderColor: '#3D2817',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    gap: 6,
-  },
-  chartsText: {
-    color: '#FF8C00',
-    fontSize: 11,
-    fontWeight: '700',
+  navItemActiveCircle: {
+    backgroundColor: '#D4F458',
   },
 });
-
-export default Taskbar;

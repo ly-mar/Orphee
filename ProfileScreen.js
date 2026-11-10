@@ -1,578 +1,2070 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, Image, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
-import { Button, Modal, Portal, IconButton } from 'react-native-paper';
-import { signOut } from "firebase/auth";
-import { auth, db } from './firebaseConfig';
-import { doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
-import { useFocusEffect } from '@react-navigation/native';
-import Taskbar from './Taskbar';
-import { FontAwesome5 } from '@expo/vector-icons'; // Assuming using Expo for icons
+// ProfileScreen.js
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+  View,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  Image,
+  ImageBackground,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  Dimensions,
+} from 'react-native';
+import { Text } from 'react-native-paper';
+import { auth, db, storage } from './firebaseConfig';
+import {
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
+} from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import * as ImagePicker from 'expo-image-picker';
+import { Audio } from 'expo-av';
+import { FontAwesome5, Feather, Ionicons } from '@expo/vector-icons';
 import moment from 'moment';
-import eventEmitter from './events'; // Import the event emitter
-import { pickImage, uploadImage } from './UploadProfilePicture';
-import FadingCarousel from './FadingCarousel';
+import Taskbar from './Taskbar';
 
-const windowWidth = Dimensions.get('window').width;
-const windowHeight = Dimensions.get('window').height;
+const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
-const getHighResImage = (imageUrl) => {
-  return imageUrl.replace('100x100', '500x500');
+const getHighResImage = (url) => {
+  if (!url || typeof url !== 'string') {
+    return 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80';
+  }
+  return url.replace('100x100bb', '600x600bb').replace('100x100', '600x600');
 };
 
-const ProfileScreen = ({ route, navigation }) => {
-  const userId = route?.params?.userId ?? auth.currentUser?.uid;
-  const [username, setUsername] = useState('');
-  const [selectedSongs, setSelectedSongs] = useState([]);
-  const [musicOfTheDay, setMusicOfTheDay] = useState(null);
-  const [selectedSong, setSelectedSong] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [currentDate, setCurrentDate] = useState(moment().format('YYYY-MM-DD'));
-  const [selectedMemoir, setSelectedMemoir] = useState(null);
-  const [pastMemoirs, setPastMemoirs] = useState([]);
-  const [mostRecentMemoir, setMostRecentMemoir] = useState(null);  // Store the most recent memoir
-  const [profileImageUrl, setProfileImageUrl] = useState('./assets/john-mark-arnold-soMvIOHmdgM-unsplash.jpg'); // Default placeholder image
-  const [uploading, setUploading] = useState(false);
-  const [mediaList, setMediaList] = useState([]);  // For storing the list of user's uploaded images
-  const [loading, setLoading] = useState(true);
-  const [followers, setFollowers] = useState(0);
-  const [following, setFollowing] = useState(0);
-  const [selectedTab, setSelectedTab] = useState('13');
+/**
+ * Client-side image compressor for Web & Native to minimize Firebase Spark bandwidth
+ * and generate a compact data-URI fallback if the bucket quota is exhausted.
+ */
+export const compressImageForUpload = async (uri, maxDim = 400, quality = 0.72) => {
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width || maxDim;
+        let height = img.height || maxDim;
 
-  const fetchUserData = async () => {
-    try {
-      const userRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userRef);
-      const userData = userDoc.data();
-      if (userData && userData.username) {
-        setUsername(userData.username);
-      }
-      if (userData && userData.profileImageUrl) {
-        setProfileImageUrl(userData.profileImageUrl);
-      } else {
-        try {
-          const imgQuery = query(collection(db, 'images'), where('userId', '==', userId), orderBy('uploadedAt', 'desc'));
-          const imgSnap = await getDocs(imgQuery);
-          if (!imgSnap.empty) {
-            const latestImg = imgSnap.docs[0].data().downloadURL;
-            setProfileImageUrl(latestImg);
-            await setDoc(userRef, { profileImageUrl: latestImg }, { merge: true });
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
           }
-        } catch (e) {
-          console.log("No images fallback found:", e);
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        canvas.toBlob(
+          (blob) => {
+            resolve({
+              blob,
+              dataUrl,
+              contentType: 'image/jpeg',
+            });
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = (err) => reject(err);
+      img.src = uri;
+    });
+  }
+
+  // Native fallback
+  const response = await fetch(uri);
+  const rawBlob = await response.blob();
+  const contentType =
+    rawBlob.type && rawBlob.type.startsWith('image/') ? rawBlob.type : 'image/jpeg';
+
+  let dataUrl = uri;
+  if (typeof FileReader !== 'undefined') {
+    dataUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result || uri);
+      reader.onerror = () => resolve(uri);
+      reader.readAsDataURL(rawBlob);
+    });
+  }
+
+  return {
+    blob: rawBlob,
+    dataUrl,
+    contentType,
+  };
+};
+
+function ProfileScreen({ navigation }) {
+  const [userInfo, setUserInfo] = useState(null);
+  const [selectedSongs, setSelectedSongs] = useState([]);
+  const [memoirs, setMemoirs] = useState([]);
+  const [mediaList, setMediaList] = useState([]);
+  const [friendsCount, setFriendsCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  // UI/UX State matching attached reference designs
+  const [activeTab, setActiveTab] = useState('your13'); // 'your13' | 'memoirs' | 'sonicTwin'
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const [activeGenreFilter, setActiveGenreFilter] = useState(null);
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [selectedMemoir, setSelectedMemoir] = useState(null);
+  const [deletingMemoirId, setDeletingMemoirId] = useState(null);
+
+  // Audio Preview State
+  const soundRef = useRef(null);
+  const [playingTrackId, setPlayingTrackId] = useState(null);
+
+  const carouselRef = useRef(null);
+  const userId = auth.currentUser?.uid;
+
+  const stopAudio = useCallback(async () => {
+    if (soundRef.current) {
+      try {
+        await soundRef.current.stopAsync();
+      } catch (_) { }
+      try {
+        await soundRef.current.unloadAsync();
+      } catch (_) { }
+      soundRef.current = null;
+    }
+    setPlayingTrackId(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopAudio();
+    };
+  }, [stopAudio]);
+
+  const handleTogglePreview = async (track) => {
+    const previewUrl = track?.previewUrl || track?.audioUrl;
+    const trackKey = track?.trackId || track?.id || track?.trackName || track?.title;
+
+    if (!previewUrl) {
+      Alert.alert('Preview Unavailable', 'No 30-second audio preview is available for this track.');
+      return;
+    }
+
+    try {
+      if (playingTrackId === trackKey) {
+        await stopAudio();
+        return;
+      }
+      await stopAudio();
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: previewUrl },
+        { shouldPlay: true },
+        (status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            setPlayingTrackId(null);
+          }
+        }
+      );
+      soundRef.current = sound;
+      setPlayingTrackId(trackKey);
+    } catch (err) {
+      console.error('Audio preview error:', err);
+      setPlayingTrackId(null);
+    }
+  };
+
+  const fetchUserData = useCallback(async () => {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const userDocRef = doc(db, 'users', currentUid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      let userData = {
+        username: auth.currentUser?.displayName || 'Sigma',
+        email: auth.currentUser?.email || '',
+        bio: 'Curating sonic worlds, 13 essential tracks & timeless music memoirs.',
+        profileImageUrl: '',
+      };
+
+      if (userDocSnap.exists()) {
+        userData = { ...userData, ...userDocSnap.data() };
+      }
+
+      // 1. Resolve Avatar & Media List (with getDocs properly imported)
+      let resolvedAvatar = userData.profileImageUrl || '';
+      const imgQuery = query(collection(db, 'images'), where('userId', '==', currentUid));
+      const imgSnapshot = await getDocs(imgQuery);
+      const uploadedImages = imgSnapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((item) => item.imageUrl);
+
+      if (!resolvedAvatar && uploadedImages.length > 0) {
+        resolvedAvatar = uploadedImages[0].imageUrl;
+      }
+      setMediaList(
+        resolvedAvatar
+          ? [{ id: 'primary', imageUrl: resolvedAvatar }, ...uploadedImages]
+          : uploadedImages
+      );
+      setUserInfo({ ...userData, profileImageUrl: resolvedAvatar });
+
+      // 2. Dual-Lookup for "Your 13" Playlist:
+      // Primary: playlists/{userId} -> Fallback: playlists/{username}
+      let loadedSongs = [];
+      const uidPlaylistRef = doc(db, 'playlists', currentUid);
+      const uidPlaylistSnap = await getDoc(uidPlaylistRef);
+
+      if (uidPlaylistSnap.exists()) {
+        const rawUidSongs = uidPlaylistSnap.data()?.songs;
+        const parsedUidSongs = Array.isArray(rawUidSongs)
+          ? rawUidSongs
+          : Object.values(rawUidSongs || {});
+        if (parsedUidSongs.length > 0) {
+          loadedSongs = parsedUidSongs;
         }
       }
 
-      const songsRef = doc(db, 'playlists', userData.username);
-      const songsDoc = await getDoc(songsRef);
-      const songsData = songsDoc.data();
-      setSelectedSongs(songsData?.songs || []);
+      // Check username document for fallback or stale cleanup
+      if (userData.username) {
+        const usernamePlaylistRef = doc(db, 'playlists', userData.username);
+        const usernamePlaylistSnap = await getDoc(usernamePlaylistRef);
 
-      const today = currentDate;
-      const musicRef = doc(db, 'daily', `${auth.currentUser.uid}_${today}`);
-      const musicDoc = await getDoc(musicRef);
-      const musicData = musicDoc.data();
-      if (musicData && musicData.music) {
-        setMusicOfTheDay(musicData.music);
-      } else {
-        setMusicOfTheDay(null);
+        if (usernamePlaylistSnap.exists()) {
+          const rawNameSongs = usernamePlaylistSnap.data()?.songs;
+          const parsedNameSongs = Array.isArray(rawNameSongs)
+            ? rawNameSongs
+            : Object.values(rawNameSongs || {});
+
+          if (loadedSongs.length === 0 && parsedNameSongs.length > 0) {
+            // Migrate legacy username playlist to playlists/{uid}
+            loadedSongs = parsedNameSongs;
+            await setDoc(
+              uidPlaylistRef,
+              {
+                userId: currentUid,
+                username: userData.username,
+                songs: loadedSongs,
+                updatedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            );
+          } else if (
+            loadedSongs.length > 0 &&
+            parsedNameSongs.length === 0 &&
+            userData.username !== currentUid
+          ) {
+            // Clean up stale empty playlists/{username} placeholder (e.g. playlists/Sigma)
+            try {
+              await deleteDoc(usernamePlaylistRef);
+            } catch (_) { }
+          }
+        }
       }
-      const friendRef = doc(db, 'requests', userId);
-      const friendsDoc = await getDoc(friendRef);
-      setFollowing(Object.keys(friendsDoc.data()?.following || {}).length);
-      setFollowers(Object.keys(friendsDoc.data()?.followers || {}).length);
+
+      setSelectedSongs(loadedSongs.slice(0, 13));
+
+      // 3. Fetch Memoirs by userId AND username to ensure complete history
+      const memoirsMap = new Map();
+
+      // Check legacy doc(db, 'memoirs', currentUid) holding pastMemoirs array
+      try {
+        const legacyDocSnap = await getDoc(doc(db, 'memoirs', currentUid));
+        if (legacyDocSnap.exists()) {
+          const lData = legacyDocSnap.data();
+          if (Array.isArray(lData?.pastMemoirs)) {
+            lData.pastMemoirs.forEach((pm, idx) => {
+              const pmId = pm.id || `${currentUid}_${idx}`;
+              memoirsMap.set(pmId, {
+                id: pmId,
+                title: pm.item?.trackName || pm.trackName || pm.title || 'Untitled Track',
+                trackName: pm.item?.trackName || pm.trackName || pm.title || 'Untitled Track',
+                artist: pm.item?.artistName || pm.artistName || pm.artist || 'Unknown Artist',
+                artistName: pm.item?.artistName || pm.artistName || pm.artist || 'Unknown Artist',
+                imageUrl: pm.item?.imageUrl || pm.item?.artworkUrl100 || pm.imageUrl || pm.artworkUrl100,
+                artworkUrl100: pm.item?.artworkUrl100 || pm.artworkUrl100,
+                previewUrl: pm.item?.previewUrl || pm.previewUrl,
+                comment: pm.comment || '',
+                timestamp: pm.timestamp,
+                userId: currentUid,
+              });
+            });
+          }
+        }
+      } catch (_) { }
+
+      // Fetch individual memoir documents from 'memoirs' collection
+      try {
+        const uidMemoirQuery = query(
+          collection(db, 'memoirs'),
+          where('userId', '==', currentUid)
+        );
+        const uidMemoirSnap = await getDocs(uidMemoirQuery);
+        uidMemoirSnap.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data && Array.isArray(data.pastMemoirs)) {
+            data.pastMemoirs.forEach((pm, idx) => {
+              const pmId = pm.id || `${docSnap.id}_${idx}`;
+              memoirsMap.set(pmId, {
+                id: pmId,
+                title: pm.item?.trackName || pm.trackName || pm.title || 'Untitled Track',
+                trackName: pm.item?.trackName || pm.trackName || pm.title || 'Untitled Track',
+                artist: pm.item?.artistName || pm.artistName || pm.artist || 'Unknown Artist',
+                artistName: pm.item?.artistName || pm.artistName || pm.artist || 'Unknown Artist',
+                imageUrl: pm.item?.imageUrl || pm.item?.artworkUrl100 || pm.imageUrl || pm.artworkUrl100,
+                artworkUrl100: pm.item?.artworkUrl100 || pm.artworkUrl100,
+                previewUrl: pm.item?.previewUrl || pm.previewUrl,
+                comment: pm.comment || '',
+                timestamp: pm.timestamp,
+                userId: currentUid,
+              });
+            });
+          } else {
+            memoirsMap.set(docSnap.id, { id: docSnap.id, ...data });
+          }
+        });
+      } catch (_) { }
+
+      if (userData.username) {
+        try {
+          const nameMemoirQuery = query(
+            collection(db, 'memoirs'),
+            where('username', '==', userData.username)
+          );
+          const nameMemoirSnap = await getDocs(nameMemoirQuery);
+          nameMemoirSnap.forEach((docSnap) => {
+            if (!memoirsMap.has(docSnap.id)) {
+              memoirsMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+            }
+          });
+        } catch (_) { }
+      }
+
+      const sortedMemoirs = Array.from(memoirsMap.values()).sort((a, b) => {
+        const timeA = a.timestamp?.seconds
+          ? a.timestamp.seconds * 1000
+          : new Date(a.timestamp || a.createdAt || 0).getTime();
+        const timeB = b.timestamp?.seconds
+          ? b.timestamp.seconds * 1000
+          : new Date(b.timestamp || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+      setMemoirs(sortedMemoirs);
+
+      // 4. Fetch Friends & Unread Notifications Count
+      try {
+        const friendsSnap = await getDocs(collection(db, 'users', currentUid, 'friends'));
+        setFriendsCount(friendsSnap.size);
+      } catch (_) { }
+
+      try {
+        const notifQuery = query(
+          collection(db, 'notifications'),
+          where('recipientId', '==', currentUid),
+          where('read', '==', false)
+        );
+        const notifSnap = await getDocs(notifQuery);
+        setUnreadCount(notifSnap.size);
+      } catch (_) { }
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      console.error('Error fetching profile data:', error);
+      Alert.alert(
+        'Profile Sync Notice',
+        'Some profile details could not be refreshed. Please check your connection.'
+      );
+    } finally {
+      setLoading(false);
     }
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      // Only fetch user data if it isn't coming directly from memoir
-      if (!route?.params?.fromMemoir) {
-        fetchUserData();
-      }
-    }, [userId, route?.params?.fromMemoir])
-  );
-
-  useEffect(() => {
-    // Set up the event listener for memoir selection
-    const handleMemoirSelected = (memoir) => {
-      setSelectedMemoir(memoir);
-      console.log('Selected Memoir:', memoir);
-    };
-    eventEmitter.on('memoirSelected', handleMemoirSelected);
-    return () => {
-      eventEmitter.off('memoirSelected', handleMemoirSelected);
-    };
   }, []);
 
-  const handleDoubleClick = (song) => {
-    setSelectedSong(song);
-    setModalVisible(true);
-  };
+  useEffect(() => {
+    fetchUserData();
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      fetchUserData();
+    });
+    return unsubscribe;
+  }, [fetchUserData, navigation]);
 
-  const handleFriendsPress = () => {
-    navigation.navigate('FriendsScreen', { userId });
-  };
-
-  const handleNotificationPress = () => {
-    navigation.navigate('NotifPage', { userId });
-  };
-
-  const handleSettingsPress = () => {
-    navigation.navigate('SettingsScreen', { userId });
-  };
-
-  // Fetch memoirs from Firestore
-  const fetchMemoirs = async () => {
+  // Avatar Picker & Upload with Explicit MIME Metadata + Quota Exceeded Fallback
+  const handlePickAndUploadAvatar = async () => {
     try {
-      const memoirRef = doc(db, 'memoirs', userId);
-      const memoirDoc = await getDoc(memoirRef);
-      if (memoirDoc.exists()) {
-        const memoirData = memoirDoc.data();
-        const sortedMemoirs = memoirData.pastMemoirs.sort((a, b) => b.timestamp.seconds - a.timestamp.seconds);
-        setPastMemoirs(sortedMemoirs);
-        setMostRecentMemoir(sortedMemoirs[0]);
-      } else {
-        console.log("No memoirs found for this user.");
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Please allow access to your photo library to update your profile picture.'
+        );
+        return;
       }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.75,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.uri) {
+        return;
+      }
+
+      await uploadAvatarWithFallback(result.assets[0].uri);
     } catch (error) {
-      console.error("Error fetching memoirs:", error);
+      console.error('Error selecting image:', error);
+      Alert.alert('Image Picker Error', 'Could not open your image library. Please try again.');
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchMemoirs();
-    }, [userId])
-  );
+  const uploadAvatarWithFallback = async (uri) => {
+    if (!userId) {
+      Alert.alert('Authentication Required', 'Please log in to update your avatar.');
+      return;
+    }
 
-  const handlePickImage = async () => {
+    setUploading(true);
+    let compressedPayload = null;
+
     try {
-      const selectedAsset = await pickImage();
-      if (selectedAsset?.uri) {
-        setUploading(true);
-        const downloadURL = await uploadImage(selectedAsset.uri, userId);
-        setProfileImageUrl(downloadURL);
-        setUploading(false);
-      }
+      compressedPayload = await compressImageForUpload(uri, 400, 0.72);
+      const { blob, contentType } = compressedPayload;
+
+      const filename = `profile_${userId}_${Date.now()}.jpg`;
+      const storageRef = ref(storage, `images/${userId}/${filename}`);
+
+      // Explicitly pass contentType metadata so storage.rules contentType.matches('image/.*') succeeds
+      const metadata = {
+        contentType: contentType || 'image/jpeg',
+        customMetadata: {
+          uploadedBy: userId,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+
+      const uploadTask = uploadBytesResumable(storageRef, blob, metadata);
+
+      const downloadUrl = await new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          null,
+          (error) => reject(error),
+          async () => {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(url);
+          }
+        );
+      });
+
+      await setDoc(
+        doc(db, 'users', userId),
+        {
+          profileImageUrl: downloadUrl,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      setUserInfo((prev) => ({ ...(prev || {}), profileImageUrl: downloadUrl }));
+      Alert.alert('Profile Updated', 'Your new profile portrait is now live.');
     } catch (error) {
-      console.error('Error handling image upload:', error);
+      console.warn('Firebase Storage upload error:', error?.code || error?.message);
+
+      // Resilient Fallback for Spark Free Tier Quota Exhaustion (storage/quota-exceeded) or CORS block
+      if (compressedPayload?.dataUrl) {
+        try {
+          await setDoc(
+            doc(db, 'users', userId),
+            {
+              profileImageUrl: compressedPayload.dataUrl,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+          setUserInfo((prev) => ({
+            ...(prev || {}),
+            profileImageUrl: compressedPayload.dataUrl,
+          }));
+          Alert.alert(
+            'Avatar Saved (Cloud Quota Fallback)',
+            'Firebase Storage daily quota was reached, so a compressed 400x400 portrait was saved directly to your profile record.'
+          );
+        } catch (firestoreErr) {
+          console.error('Firestore avatar fallback failed:', firestoreErr);
+          Alert.alert(
+            'Upload Failed',
+            'Unable to save your profile picture right now. Please try a smaller image.'
+          );
+        }
+      } else {
+        Alert.alert(
+          'Upload Error',
+          error?.code === 'storage/quota-exceeded'
+            ? 'Firebase Storage daily quota has been exceeded. Please try again later.'
+            : error?.message || 'An unexpected error occurred while uploading your image.'
+        );
+      }
+    } finally {
       setUploading(false);
     }
   };
 
-  useEffect(() => {
-    const imagesQuery = query(
-      collection(db, 'images'),
-      where('userId', '==', userId),
-      orderBy('uploadedAt', 'desc')
-    );
+  const handleDeleteMemoir = async (memoirId) => {
+    if (!memoirId) return;
+    try {
+      setDeletingMemoirId(memoirId);
+      const currentUid = auth.currentUser?.uid;
 
-    const unsubscribe = onSnapshot(imagesQuery, (snapshot) => {
-      const userMedia = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setMediaList(userMedia);
-      setLoading(false);
+      // 1. Remove from pastMemoirs array on doc(db, 'memoirs', currentUid)
+      if (currentUid) {
+        try {
+          const userMemoirRef = doc(db, 'memoirs', currentUid);
+          const userMemoirSnap = await getDoc(userMemoirRef);
+          if (userMemoirSnap.exists() && Array.isArray(userMemoirSnap.data()?.pastMemoirs)) {
+            const filtered = userMemoirSnap.data().pastMemoirs.filter(
+              (pm, idx) => (pm.id || `${currentUid}_${idx}`) !== memoirId
+            );
+            await setDoc(userMemoirRef, { pastMemoirs: filtered }, { merge: true });
+          }
+        } catch (legacyErr) {
+          console.warn('Could not remove memoir from user document array:', legacyErr);
+        }
+      }
+
+      // 2. Also remove individual memoir document if present
+      try {
+        await deleteDoc(doc(db, 'memoirs', memoirId));
+      } catch (_) { }
+
+      setMemoirs((prev) => prev.filter((m) => m.id !== memoirId));
+      if (selectedMemoir?.id === memoirId) {
+        setSelectedMemoir(null);
+      }
+    } catch (error) {
+      console.error('Error deleting memoir:', error);
+      Alert.alert('Delete Failed', 'Could not delete this memoir entry. Please try again.');
+    } finally {
+      setDeletingMemoirId(null);
+    }
+  };
+
+  const formatMemoirDate = (rawTimestamp) => {
+    if (!rawTimestamp) return 'Recently logged';
+    if (rawTimestamp?.seconds) {
+      const m = moment(rawTimestamp.seconds * 1000);
+      return `${m.format('MMM D, YYYY')} • ${m.fromNow()}`;
+    }
+    const parsed = moment(rawTimestamp);
+    return parsed.isValid()
+      ? `${parsed.format('MMM D, YYYY')} • ${parsed.fromNow()}`
+      : 'Recently logged';
+  };
+
+  // Dynamic Genre Tags derived from User's 13 Songs
+  const genreTags = useMemo(() => {
+    const counts = {};
+    selectedSongs.forEach((song) => {
+      const genre = song?.primaryGenreName || song?.genre;
+      if (genre && genre !== 'Music') {
+        counts[genre] = (counts[genre] || 0) + 1;
+      }
     });
+    const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    return sorted.length > 0 ? sorted.slice(0, 5) : ['R&B/Soul', 'Hip-Hop', 'Kompa', 'Curator'];
+  }, [selectedSongs]);
 
-    return () => unsubscribe();
-  }, [userId]);
+  const filteredSongs = useMemo(() => {
+    if (!activeGenreFilter) return selectedSongs;
+    return selectedSongs.filter(
+      (s) => (s.primaryGenreName || s.genre) === activeGenreFilter
+    );
+  }, [selectedSongs, activeGenreFilter]);
+
+  const scrollCarousel = (direction) => {
+    const nextIndex = Math.max(
+      0,
+      Math.min(filteredSongs.length - 1, carouselIndex + direction)
+    );
+    setCarouselIndex(nextIndex);
+    if (carouselRef.current) {
+      carouselRef.current.scrollTo({
+        x: nextIndex * 108,
+        animated: true,
+      });
+    }
+  };
+
+  const avatarUri =
+    userInfo?.profileImageUrl ||
+    mediaList[0]?.imageUrl ||
+    getHighResImage(selectedSongs[0]?.artworkUrl100 || selectedSongs[0]?.imageUrl);
+
+  const featuredTrack = selectedSongs[0] || null;
+  const latestMemoir = memoirs[0] || null;
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color="#D4F458" />
+        <Text style={styles.loadingLabel}>Loading @{userInfo?.username || 'Sigma'}...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollViewContent}>
-        <View style={styles.profileHeaderContainer}>
-          <View style={styles.profileImageContainer}>
-            {loading ? (
-              <ActivityIndicator size="large" color="#0000ff" />
-            ) : mediaList.length > 0 ? (
-              <FadingCarousel images={mediaList.map((item) => item.downloadURL)} duration={3000} />
-            ) : (
-              <Text>No profile image available</Text>
-            )}
-            <TouchableOpacity style={{ marginTop: 10 }} onPress={handlePickImage}>
-              <FontAwesome5 name="images" size={24} color="red" />
-            </TouchableOpacity>
-            {uploading && <ActivityIndicator size="large" color="#0000ff" />}
-          </View>
-
-          <Text style={styles.username}>{username}</Text>
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-            <TouchableOpacity style={styles.statItem} onPress={handleFriendsPress}> 
-              <Text style={styles.statNumber}>{following}</Text>
-              <Text style={styles.statLabel}>Following</Text>
-              </TouchableOpacity>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* TOP AMBIENT HEADER BAR (Design 3: Circular Avatar + Glassmorphic Utility Icons) */}
+        <View style={styles.topUtilityHeader}>
+          <TouchableOpacity
+            style={styles.topMiniAvatarWrap}
+            onPress={handlePickAndUploadAvatar}
+            activeOpacity={0.85}
+          >
+            <Image source={{ uri: avatarUri }} style={styles.topMiniAvatar} />
+            <View style={styles.cameraMiniBadge}>
+              <Feather name="camera" size={10} color="#0B0C10" />
             </View>
-            <TouchableOpacity style={styles.statItem} onPress={handleFriendsPress}>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{followers}</Text>
-              <Text style={styles.statLabel}>Followers</Text>
-            </View>
-            </TouchableOpacity>
-          </View>
-          
-          {/* Action Buttons */}
-          <View style={styles.actionButtons}>
-            <IconButton icon="bell" size={24} onPress={handleNotificationPress} style={styles.iconButton} iconColor="red" />
-            <IconButton icon="cog" size={24} onPress={handleSettingsPress} style={styles.iconButton} iconColor="red" />
-            <IconButton icon="message" size={24} onPress={() => navigation.navigate('MainChatScreen')} style={styles.iconButton} iconColor="red" />
-          </View>
-        </View>
+          </TouchableOpacity>
 
-        {/* Tab Navigation */}
-        <View style={styles.tabContainer}>
-          {['13', 'Memoir'].map((tab) => (
+          <View style={styles.topUtilityIconsRow}>
             <TouchableOpacity
-              key={tab}
-              style={[styles.tabItem, selectedTab === tab && styles.activeTabItem]}
-              onPress={() => setSelectedTab(tab)}
+              style={styles.glassCircleBtn}
+              onPress={() => navigation.navigate('UserSearchScreen')}
             >
-              <Text style={[styles.tabText, selectedTab === tab && styles.activeTabText]}>{tab === '13' ? 'Your 13' : tab}</Text>
+              <Feather name="search" size={18} color="#FFFFFF" />
             </TouchableOpacity>
-          ))}
-        </View>
 
-        {selectedTab === '13' && (
-          <View style={styles.musicOfTheDayContainer}>
-            <Text style={styles.sectionTitle}>Your 13</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {selectedSongs.length > 0 ? (
-                selectedSongs.map((item) => (
-                  <TouchableOpacity key={item.trackId} onPress={() => handleDoubleClick(item)}>
-                    <Image source={{ uri: getHighResImage(item.artworkUrl100) }} style={styles.playlistCover} />
-                  </TouchableOpacity>
-                ))
-              ) : (
-                <View style={styles.centeredContainer}>
-                <Text style={styles.noMusicText}>No songs in your Hit List.</Text>
-                <TouchableOpacity
-                    style={styles.customButton}
-                    onPress={() => navigation.navigate('Your13')}>
-                    <Text style={styles.customButtonText}>Write Your Hit List</Text> 
-                  </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.glassCircleBtn}
+              onPress={() => navigation.navigate('NotifPage')}
+            >
+              <Feather name="bell" size={18} color="#FFFFFF" />
+              {unreadCount > 0 && (
+                <View style={styles.unreadDot}>
+                  <Text style={styles.unreadDotText}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </Text>
                 </View>
               )}
-            </ScrollView>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.glassCircleBtn}
+              onPress={() => navigation.navigate('MainChatScreen')}
+            >
+              <Feather name="message-circle" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.glassCircleBtn}
+              onPress={() => navigation.navigate('SettingsScreen')}
+            >
+              <Feather name="settings" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* GREETING & CHARTREUSE PILL TABS (Design 3: image_74650d.jpg) */}
+        <View style={styles.greetingSection}>
+          <Text style={styles.greetingTitle}>Hi, {userInfo?.username || 'Sigma'}</Text>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryPillsRow}
+          >
+            <TouchableOpacity
+              style={[
+                styles.categoryPill,
+                activeTab === 'your13' && styles.categoryPillActive,
+              ]}
+              onPress={() => setActiveTab('your13')}
+            >
+              <Text
+                style={[
+                  styles.categoryPillText,
+                  activeTab === 'your13' && styles.categoryPillTextActive,
+                ]}
+              >
+                Your 13 ({selectedSongs.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.categoryPill,
+                activeTab === 'memoirs' && styles.categoryPillActive,
+              ]}
+              onPress={() => setActiveTab('memoirs')}
+            >
+              <Text
+                style={[
+                  styles.categoryPillText,
+                  activeTab === 'memoirs' && styles.categoryPillTextActive,
+                ]}
+              >
+                Memoirs ({memoirs.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.categoryPill,
+                activeTab === 'sonicTwin' && styles.categoryPillActive,
+              ]}
+              onPress={() => setActiveTab('sonicTwin')}
+            >
+              <Text
+                style={[
+                  styles.categoryPillText,
+                  activeTab === 'sonicTwin' && styles.categoryPillTextActive,
+                ]}
+              >
+                Sonic Twin
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.categoryPill}
+              onPress={() => navigation.navigate('RankedMusicList')}
+            >
+              <Text style={styles.categoryPillText}>Top Charts</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        {/* EDITORIAL HERO PORTRAIT & FROSTED GLASSMORPHIC SHEET (Design 1: image_740e61.png) */}
+        <View style={styles.heroCardOuter}>
+          <ImageBackground
+            source={{ uri: avatarUri }}
+            style={[
+              styles.heroImageBackground,
+              sheetExpanded && styles.heroImageBackgroundExpanded,
+            ]}
+            imageStyle={styles.heroImageRadius}
+          >
+            {/* Subtle top bar inside portrait card */}
+            <View style={styles.heroTopOverlayBar}>
+              <TouchableOpacity
+                style={styles.heroCircleIconBtn}
+                onPress={handlePickAndUploadAvatar}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Feather name="camera" size={15} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+
+              <Text style={styles.heroHandleTopText}>
+                @{(userInfo?.username || 'sigma').toLowerCase()}
+              </Text>
+
+              <TouchableOpacity
+                style={styles.editProfilePillBtn}
+                onPress={() => navigation.navigate('UpdateProfileScreen')}
+              >
+                <Text style={styles.editProfilePillText}>Edit Profile</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Dark Frosted Glassmorphic Sheet */}
+            <View style={styles.frostedGlassSheet}>
+              <View style={styles.sheetDragHandle} />
+
+              <View style={styles.sheetHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sheetDisplayName}>
+                    {userInfo?.username || 'Sigma'}
+                  </Text>
+                  <Text style={styles.sheetHandleSub}>
+                    @{(userInfo?.username || 'sigma').toLowerCase()}
+                  </Text>
+                </View>
+
+                <View style={styles.sheetQuickBadgesRow}>
+                  <TouchableOpacity
+                    style={styles.iridescentStarCircle}
+                    onPress={() => navigation.navigate('UserGraph')}
+                  >
+                    <Ionicons name="sparkles" size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.whiteActionCircle}
+                    onPress={() => navigation.navigate('FriendsScreen')}
+                  >
+                    <Ionicons name="people" size={16} color="#0B0C10" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.seeProfileToggleBtn}
+                    onPress={() => setSheetExpanded((prev) => !prev)}
+                  >
+                    <Text style={styles.seeProfileToggleText}>
+                      {sheetExpanded ? 'Collapse' : 'See profile'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <Text style={styles.sheetBioText} numberOfLines={sheetExpanded ? 4 : 2}>
+                {userInfo?.bio ||
+                  'Curating sonic worlds, 13 essential tracks & timeless music memoirs.'}
+              </Text>
+
+              {/* 3-Column Metrics Row */}
+              <View style={styles.statsColumnsRow}>
+                <TouchableOpacity
+                  style={styles.statColumn}
+                  onPress={() => navigation.navigate('FriendsScreen')}
+                >
+                  <Text style={styles.statNumber}>{friendsCount}</Text>
+                  <Text style={styles.statLabel}>Friends</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.statColumn}
+                  onPress={() => setActiveTab('your13')}
+                >
+                  <Text style={styles.statNumber}>{selectedSongs.length}</Text>
+                  <Text style={styles.statLabel}>Your 13</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.statColumn}
+                  onPress={() => setActiveTab('memoirs')}
+                >
+                  <Text style={styles.statNumber}>{memoirs.length}</Text>
+                  <Text style={styles.statLabel}>Memoirs</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Genre & Curator Hashtag Pills */}
+              <View style={styles.hashtagPillsWrap}>
+                {genreTags.map((genre) => {
+                  const isSelected = activeGenreFilter === genre;
+                  return (
+                    <TouchableOpacity
+                      key={genre}
+                      style={[
+                        styles.hashtagPill,
+                        isSelected && styles.hashtagPillSelected,
+                      ]}
+                      onPress={() =>
+                        setActiveGenreFilter(isSelected ? null : genre)
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.hashtagPillText,
+                          isSelected && styles.hashtagPillTextSelected,
+                        ]}
+                      >
+                        #{genre.toLowerCase().replace(/\s+/g, '')}
+                        {isSelected ? '  ✕' : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Horizontal Rounded-Square Track Carousel inside Sheet */}
+              {filteredSongs.length > 0 && (
+                <View style={styles.sheetCarouselSection}>
+                  <ScrollView
+                    ref={carouselRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.sheetCarouselScroll}
+                  >
+                    {filteredSongs.map((song, idx) => {
+                      const art = getHighResImage(song.artworkUrl100 || song.imageUrl);
+                      return (
+                        <TouchableOpacity
+                          key={`${song.trackId || idx}`}
+                          style={styles.sheetCarouselThumbCard}
+                          onPress={() =>
+                            navigation.navigate('SongDetails', { song })
+                          }
+                          activeOpacity={0.88}
+                        >
+                          <Image
+                            source={{ uri: art }}
+                            style={styles.sheetCarouselThumbImg}
+                          />
+                          <View style={styles.sheetThumbRankBadge}>
+                            <Text style={styles.sheetThumbRankText}>#{idx + 1}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  <View style={styles.carouselArrowsRow}>
+                    <TouchableOpacity
+                      style={styles.carouselArrowCircle}
+                      onPress={() => scrollCarousel(-2)}
+                    >
+                      <Feather name="arrow-left" size={14} color="#0B0C10" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.carouselArrowCircle}
+                      onPress={() => scrollCarousel(2)}
+                    >
+                      <Feather name="arrow-right" size={14} color="#0B0C10" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {/* Featured Memoir Quote Footer inside Frosted Sheet */}
+              {latestMemoir ? (
+                <TouchableOpacity
+                  style={styles.sheetTestimonialRow}
+                  onPress={() => setSelectedMemoir(latestMemoir)}
+                  activeOpacity={0.85}
+                >
+                  <Image
+                    source={{
+                      uri: getHighResImage(
+                        latestMemoir.imageUrl || latestMemoir.artworkUrl100
+                      ),
+                    }}
+                    style={styles.sheetTestimonialAvatar}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sheetTestimonialQuote} numberOfLines={3}>
+                      "{latestMemoir.comment}"
+                    </Text>
+                    <Text style={styles.sheetTestimonialAuthor}>
+                      {latestMemoir.title || latestMemoir.trackName}
+                    </Text>
+                    <Text style={styles.sheetTestimonialHandle}>
+                      {latestMemoir.artist || latestMemoir.artistName} •{' '}
+                      {formatMemoirDate(latestMemoir.timestamp)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </ImageBackground>
+        </View>
+
+        {/* TAB 1: YOUR 13 CURATED PLAYLIST */}
+        {activeTab === 'your13' && (
+          <View style={styles.tabSectionContainer}>
+            {/* Curated & Trending Lavender Spotlight Card (Design 3: image_74650d.jpg) */}
+            <Text style={styles.sectionHeading}>Curated & trending</Text>
+
+            <View style={styles.lavenderSpotlightCard}>
+              <View style={styles.lavenderLeftCol}>
+                <Text style={styles.lavenderCardTitle} numberOfLines={1}>
+                  {featuredTrack
+                    ? featuredTrack.trackName || featuredTrack.title
+                    : 'Build Your 13 Hit List'}
+                </Text>
+                <Text style={styles.lavenderCardSub} numberOfLines={2}>
+                  {featuredTrack
+                    ? `${featuredTrack.artistName || featuredTrack.artist} • #1 in ${userInfo?.username || 'Sigma'
+                    }'s 13`
+                    : 'Curate your 13 signature tracks to unlock Sonic Twin matching.'}
+                </Text>
+
+                <View style={styles.lavenderActionsRow}>
+                  <TouchableOpacity
+                    style={styles.deepPurplePlayBtn}
+                    onPress={() =>
+                      featuredTrack
+                        ? handleTogglePreview(featuredTrack)
+                        : navigation.navigate('Your13')
+                    }
+                  >
+                    <FontAwesome5
+                      name={
+                        featuredTrack &&
+                          playingTrackId ===
+                          (featuredTrack.trackId || featuredTrack.trackName)
+                          ? 'stop'
+                          : 'play'
+                      }
+                      size={14}
+                      color="#FFFFFF"
+                    />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.lavenderOutlineCircle}
+                    onPress={() => navigation.navigate('Your13')}
+                  >
+                    <Feather name="edit-2" size={15} color="#1A1026" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.lavenderOutlineCircle}
+                    onPress={() => navigation.navigate('Memoir')}
+                  >
+                    <Feather name="book-open" size={15} color="#1A1026" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <Image
+                source={{
+                  uri: getHighResImage(
+                    featuredTrack?.artworkUrl100 ||
+                    featuredTrack?.imageUrl ||
+                    avatarUri
+                  ),
+                }}
+                style={styles.lavenderArtworkImg}
+              />
+            </View>
+
+            {/* Top Curated Tracks List (Design 3: image_74650d.jpg) */}
+            <View style={styles.listHeaderRow}>
+              <Text style={styles.sectionHeading}>
+                Your 13 Hit List ({filteredSongs.length})
+              </Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Your13')}>
+                <Text style={styles.seeAllLinkText}>Edit 13</Text>
+              </TouchableOpacity>
+            </View>
+
+            {filteredSongs.length === 0 ? (
+              <View style={styles.emptyCardBox}>
+                <Ionicons name="musical-notes-outline" size={38} color="#D4F458" />
+                <Text style={styles.emptyCardTitle}>No songs in your Hit List</Text>
+                <Text style={styles.emptyCardSubtitle}>
+                  Select up to 13 tracks that define your musical identity.
+                </Text>
+                <TouchableOpacity
+                  style={styles.chartreusePrimaryBtn}
+                  onPress={() => navigation.navigate('Your13')}
+                >
+                  <Text style={styles.chartreusePrimaryBtnText}>
+                    Curate Your 13 Songs
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              filteredSongs.map((song, idx) => {
+                const trackKey = song.trackId || song.id || song.trackName || idx;
+                const isPlaying = playingTrackId === trackKey;
+
+                return (
+                  <TouchableOpacity
+                    key={`${trackKey}-${idx}`}
+                    style={styles.trackRowCard}
+                    onPress={() => navigation.navigate('SongDetails', { song })}
+                    activeOpacity={0.85}
+                  >
+                    <Image
+                      source={{
+                        uri: getHighResImage(song.artworkUrl100 || song.imageUrl),
+                      }}
+                      style={styles.trackRowArtwork}
+                    />
+
+                    <View style={styles.trackRowMeta}>
+                      <Text style={styles.trackRowTitle} numberOfLines={1}>
+                        {song.trackName || song.title || 'Unknown Track'}
+                      </Text>
+                      <Text style={styles.trackRowSub} numberOfLines={1}>
+                        By {song.artistName || song.artist || 'Unknown Artist'} •{' '}
+                        {song.primaryGenreName || song.genre || 'Track #' + (idx + 1)}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.trackRowPlayCircle,
+                        isPlaying && styles.trackRowPlayCircleActive,
+                      ]}
+                      onPress={() => handleTogglePreview(song)}
+                    >
+                      <FontAwesome5
+                        name={isPlaying ? 'stop' : 'play'}
+                        size={11}
+                        color={isPlaying ? '#0B0C10' : '#FFFFFF'}
+                      />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+
+            {/* Floating Counter Pill (Design 2: image_7460ef.jpg) */}
+            <View style={styles.floatingCounterPillWrap}>
+              <TouchableOpacity
+                style={styles.floatingCounterPill}
+                onPress={() => navigation.navigate('Your13')}
+              >
+                <View style={styles.floatingCounterIconBox}>
+                  <Feather name="disc" size={14} color="#D4F458" />
+                </View>
+                <Text style={styles.floatingCounterText}>
+                  Curated {selectedSongs.length} / 13 Tracks
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
-        {selectedTab === 'Memoir' && (
-          <View style={styles.memoirContainer}>
-             <TouchableOpacity onPress={() => navigation.navigate('MemoirSearchPage')}>
-                  <FontAwesome5 name="pen-nib" size={24} color="white" style={styles.bookIcon} />
+        {/* TAB 2: REFACTORED MEMOIR TAB */}
+        {activeTab === 'memoirs' && (
+          <View style={styles.tabSectionContainer}>
+            <View style={styles.listHeaderRow}>
+              <View>
+                <Text style={styles.sectionHeading}>Song Memoirs</Text>
+                <Text style={styles.memoirHeaderSub}>
+                  Personal stories & timestamps attached to your soundtrack
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.addMemoirPillBtn}
+                onPress={() => navigation.navigate('Memoir')}
+              >
+                <Feather name="plus" size={15} color="#0B0C10" />
+                <Text style={styles.addMemoirPillText}>Add Song Memoir</Text>
               </TouchableOpacity>
-            {pastMemoirs.length > 0 ? (
-              pastMemoirs.map((memoir, index) => (
-                <View key={index} style={styles.memoirItemContainer}>
-                  <View style={styles.coverAndTrackInfoContainer}>
-                    <Image
-                      source={{ uri: getHighResImage(memoir.item.artworkUrl100) }}
-                      style={styles.coverImage}
-                    />
-                    <Text style={styles.trackTitle}>
-                      {memoir.item.trackName} - {memoir.item.artistName}
-                    </Text>
-                  </View>
-                  <View style={styles.commentDisplayContainer}>
-                    <Text style={styles.commentDisplayText}>{memoir.comment}</Text>
-                  </View>
-                </View>
-              ))
+            </View>
+
+            {memoirs.length === 0 ? (
+              <View style={styles.emptyCardBox}>
+                <Feather name="Feather" size={34} color="#D4F458" />
+                <Text style={styles.emptyCardTitle}>No Song Memoirs Logged Yet</Text>
+                <Text style={styles.emptyCardSubtitle}>
+                  Capture the memory, place, or feeling behind a song that matters to you.
+                </Text>
+                <TouchableOpacity
+                  style={styles.chartreusePrimaryBtn}
+                  onPress={() => navigation.navigate('Memoir')}
+                >
+                  <Text style={styles.chartreusePrimaryBtnText}>
+                    + Write Your First Memoir
+                  </Text>
+                </TouchableOpacity>
+              </View>
             ) : (
-              <Text style={styles.noMemoirsText}>No recent memoirs to display.</Text>
+              memoirs.map((item) => {
+                const trackTitle = item.title || item.trackName || 'Untitled Track';
+                const artistName = item.artist || item.artistName || 'Unknown Artist';
+                const artwork = getHighResImage(item.imageUrl || item.artworkUrl100);
+
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.memoirCard}
+                    onPress={() => setSelectedMemoir(item)}
+                    activeOpacity={0.88}
+                  >
+                    <Image source={{ uri: artwork }} style={styles.memoirArtwork} />
+
+                    <View style={styles.memoirCardBody}>
+                      <View style={styles.memoirTopMetaRow}>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={styles.memoirTrackTitle} numberOfLines={1}>
+                            {trackTitle}
+                          </Text>
+                          <Text style={styles.memoirArtistName} numberOfLines={1}>
+                            {artistName}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.memoirDeleteIconBtn}
+                          onPress={() => handleDeleteMemoir(item.id)}
+                          disabled={deletingMemoirId === item.id}
+                        >
+                          {deletingMemoirId === item.id ? (
+                            <ActivityIndicator size="small" color="#EF4444" />
+                          ) : (
+                            <Feather name="trash-2" size={14} color="#94A3B8" />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={styles.memoirCommentText} numberOfLines={3}>
+                        "{item.comment}"
+                      </Text>
+
+                      <View style={styles.memoirFooterRow}>
+                        <Text style={styles.memoirTimestampText}>
+                          {formatMemoirDate(item.timestamp)}
+                        </Text>
+                        <Text style={styles.memoirReadMoreText}>Read reflection →</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
             )}
+          </View>
+        )}
+
+        {/* TAB 3: SONIC TWIN */}
+        {activeTab === 'sonicTwin' && (
+          <View style={styles.tabSectionContainer}>
+            <Text style={styles.sectionHeading}>Sonic Compatibility</Text>
+
+            <TouchableOpacity
+              style={styles.lavenderSpotlightCard}
+              onPress={() => navigation.navigate('UserGraph')}
+              activeOpacity={0.9}
+            >
+              <View style={styles.lavenderLeftCol}>
+                <Text style={styles.lavenderCardTitle}>Sonic Twin Engine</Text>
+                <Text style={styles.lavenderCardSub}>
+                  Compare your 13 tracks against the TuneHub community graph.
+                </Text>
+                <View style={styles.lavenderActionsRow}>
+                  <View style={styles.deepPurplePlayBtn}>
+                    <Ionicons name="analytics" size={16} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.exploreGraphText}>Launch Affinity Graph →</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
 
-      <View style={styles.taskbarContainer}>
-        <Taskbar />
-      </View>
+      {/* MEMOIR FULL REFLECTION & AUDIO PREVIEW MODAL */}
+      <Modal
+        visible={!!selectedMemoir}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedMemoir(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            {selectedMemoir && (
+              <>
+                <View style={styles.modalHeaderRow}>
+                  <Text style={styles.modalHeaderLabel}>SONG MEMOIR</Text>
+                  <TouchableOpacity onPress={() => setSelectedMemoir(null)}>
+                    <Feather name="x" size={20} color="#94A3B8" />
+                  </TouchableOpacity>
+                </View>
 
-      {/* Modal for Selected Song */}
-      <Portal>
-        <Modal visible={modalVisible} onDismiss={() => setModalVisible(false)} contentContainerStyle={styles.modalContainer}>
-          {selectedSong && (
-            <View>
-              <Image source={{ uri: getHighResImage(selectedSong.artworkUrl100) }} style={styles.modalImage} />
-              <Text style={styles.modalTitle}>{selectedSong.trackName}</Text>
-              <Text style={styles.modalArtist}>{selectedSong.artistName}</Text>
-              <Text style={styles.modalDuration}>{Math.floor(selectedSong.trackTimeMillis / 60000)}:{Math.floor((selectedSong.trackTimeMillis % 60000) / 1000).toFixed(0).padStart(2, '0')}</Text>
-              <Button onPress={() => setModalVisible(false)} style={styles.closeButton}>Close</Button>
-            </View>
-          )}
-        </Modal>
-      </Portal>
-    </View>
+                <View style={styles.modalTrackSummary}>
+                  <Image
+                    source={{
+                      uri: getHighResImage(
+                        selectedMemoir.imageUrl || selectedMemoir.artworkUrl100
+                      ),
+                    }}
+                    style={styles.modalTrackCover}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalTrackTitle}>
+                      {selectedMemoir.title || selectedMemoir.trackName}
+                    </Text>
+                    <Text style={styles.modalTrackArtist}>
+                      {selectedMemoir.artist || selectedMemoir.artistName}
+                    </Text>
+                    <Text style={styles.modalTimestamp}>
+                      {formatMemoirDate(selectedMemoir.timestamp)}
+                    </Text>
+                  </View>
+                </View>
+
+                <ScrollView style={styles.modalCommentScroll}>
+                  <Text style={styles.modalCommentFullText}>
+                    "{selectedMemoir.comment}"
+                  </Text>
+                </ScrollView>
+
+                <View style={styles.modalActionsRow}>
+                  {(selectedMemoir.previewUrl || selectedMemoir.audioUrl) && (
+                    <TouchableOpacity
+                      style={styles.chartreusePrimaryBtn}
+                      onPress={() => handleTogglePreview(selectedMemoir)}
+                    >
+                      <Text style={styles.chartreusePrimaryBtnText}>
+                        {playingTrackId ===
+                          (selectedMemoir.trackId ||
+                            selectedMemoir.id ||
+                            selectedMemoir.title)
+                          ? 'Stop Preview'
+                          : '▶ Play 30s Preview'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.deleteMemoirModalBtn}
+                    onPress={() => handleDeleteMemoir(selectedMemoir.id)}
+                  >
+                    <Feather name="trash-2" size={14} color="#EF4444" />
+                    <Text style={styles.deleteMemoirModalText}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* FLOATING BOTTOM TASKBAR */}
+      <Taskbar navigation={navigation} />
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#0B0C10',
   },
-  scrollViewContent: {
-    paddingBottom: 100,
-  },
-  profileHeaderContainer: {
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: '#0B0C10',
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
-  profileImageContainer: {
-    alignItems: 'center',
-    marginVertical: 20,
+  loadingLabel: {
+    color: '#94A3B8',
+    fontSize: 14,
+    marginTop: 12,
+    fontWeight: '600',
   },
-  profileImage: {
-    width: windowWidth * 0.2,
-    height: windowWidth * 0.2,
-  },
-  username: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: 'white',
-    textAlign: 'center',
-    textShadowColor: '#CC3639',
-    textShadowOffset: { width: 3, height: 3 },
-    textShadowRadius: 1,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+  scrollContent: {
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 125, // Prevents bottom Taskbar collision
+    maxWidth: 540,
     width: '100%',
-    marginVertical: 10,
+    alignSelf: 'center',
   },
-  statItem: {
+  topUtilityHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  topMiniAvatarWrap: {
+    position: 'relative',
+  },
+  topMiniAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1.5,
+    borderColor: '#D4F458',
+    backgroundColor: '#181A20',
+  },
+  cameraMiniBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#D4F458',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topUtilityIconsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  glassCircleBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#171922',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#D4F458',
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  unreadDotText: {
+    color: '#0B0C10',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  greetingSection: {
+    marginBottom: 18,
+  },
+  greetingTitle: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    marginBottom: 14,
+  },
+  categoryPillsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingRight: 12,
+  },
+  categoryPill: {
+    backgroundColor: '#171922',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  categoryPillActive: {
+    backgroundColor: '#D4F458',
+    borderColor: '#D4F458',
+  },
+  categoryPillText: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  categoryPillTextActive: {
+    color: '#0B0C10',
+    fontWeight: '800',
+  },
+  heroCardOuter: {
+    width: '100%',
+    borderRadius: 28,
+    overflow: 'hidden',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: '#14161E',
+  },
+  heroImageBackground: {
+    width: '100%',
+    minHeight: 430,
+    justifyContent: 'space-between',
+  },
+  heroImageBackgroundExpanded: {
+    minHeight: 520,
+  },
+  heroImageRadius: {
+    borderRadius: 28,
+  },
+  heroTopOverlayBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  heroCircleIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(11, 12, 16, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  heroHandleTopText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    backgroundColor: 'rgba(11, 12, 16, 0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  editProfilePillBtn: {
+    backgroundColor: '#0B0C10',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  editProfilePillText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  frostedGlassSheet: {
+    marginTop: 110,
+    backgroundColor: 'rgba(15, 16, 22, 0.88)',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 18,
+    borderTopWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  sheetDragHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  sheetHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  sheetDisplayName: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  sheetHandleSub: {
+    color: '#94A3B8',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  sheetQuickBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iridescentStarCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#9333EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  whiteActionCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  seeProfileToggleBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  seeProfileToggleText: {
+    color: '#E2E8F0',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  sheetBioText: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 14,
+  },
+  statsColumnsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 28,
+    marginBottom: 14,
+  },
+  statColumn: {
+    alignItems: 'flex-start',
   },
   statNumber: {
+    color: '#FFFFFF',
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontWeight: '800',
   },
   statLabel: {
-    fontSize: 14,
-    color: 'gray',
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 2,
   },
-  followButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    marginTop: 10,
-  },
-  followButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  tabContainer: {
+  hashtagPillsWrap: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
-    marginBottom: 10,
-  },
-  tabItem: {
-    paddingVertical: 10,
-  },
-  activeTabItem: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#fff',
-  },
-  tabText: {
-    fontSize: 16,
-    color: 'gray',
-  },
-  activeTabText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  musicOfTheDayContainer: {
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  musicCover: {
-    width: 300,
-    height: 300,
-    borderRadius: 10,
-    marginTop: 10,
-  },
-  noMusicText: {
-    color: '#cccccc',
-    fontSize: 16,
-    marginTop: 10,
-  },
-  playlistContainer: {
-    marginVertical: 20,
-  },
-  playlistTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: 'white',
-    textAlign: 'center',
-  },
-  playlistCover: {
-    width: 100,
-    height: 100,
-    borderRadius: 5,
-    marginHorizontal: 5,
-  },
-  memoirContainer: {
-    marginVertical: 20,
-    alignItems: 'center',
-  },
-  memoirHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  memoirTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: 'white',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  bookIcon: {
-    marginLeft: 10,
-  },
-  memoirItemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-    paddingHorizontal: 10,
-    backgroundColor: '#121212',
-    borderRadius: 10,
-  },
-  coverAndTrackInfoContainer: {
-    flex: 0.6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  coverImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 10,
-    marginLeft: 5,
-  },
-  trackTitle: {
-    fontSize: 16,
-    color: 'white',
-    textAlign: 'center',
-    marginTop: 8,
     flexWrap: 'wrap',
-    maxWidth: '100%',
+    gap: 8,
+    marginBottom: 14,
   },
-  commentDisplayContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingLeft: 20,
+  hashtagPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.09)',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
-  commentDisplayText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-    fontStyle: 'italic',
-    textAlign: 'left',
+  hashtagPillSelected: {
+    backgroundColor: '#D4F458',
+    borderColor: '#D4F458',
   },
-  taskbarContainer: {
-    position: 'absolute',
-    bottom: 0,
+  hashtagPillText: {
+    color: '#CBD5E1',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  hashtagPillTextSelected: {
+    color: '#0B0C10',
+    fontWeight: '800',
+  },
+  sheetCarouselSection: {
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  sheetCarouselScroll: {
+    gap: 10,
+    paddingRight: 8,
+  },
+  sheetCarouselThumbCard: {
+    width: 96,
+    height: 96,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#222530',
+    position: 'relative',
+  },
+  sheetCarouselThumbImg: {
     width: '100%',
-    backgroundColor: '#121212',
-    paddingVertical: windowWidth * 0.02,
+    height: '100%',
   },
-  modalContainer: {
-    backgroundColor: '#1f1f1f',
-    padding: 20,
-    borderRadius: 10,
-    alignItems: 'center',
+  sheetThumbRankBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: 'rgba(11, 12, 16, 0.78)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
-  centeredContainer: {
-    flex: 1, // Ensures the view takes up available space
-    justifyContent: 'center', // Vertically centers the content
-    alignItems: 'center', // Horizontally centers the content
+  sheetThumbRankText: {
+    color: '#D4F458',
+    fontSize: 10,
+    fontWeight: '800',
   },
-  modalImage: {
-    width: 200,
-    height: 200,
-    borderRadius: 10,
-    marginBottom: 20,
-  },
-  modalTitle: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  modalArtist: {
-    color: '#ffffff',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  modalDuration: {
-    color: '#ffffff',
-    fontSize: 14,
-    textAlign: 'center',
-    marginVertical: 10,
-  },
-  closeButton: {
-    backgroundColor: '#ff8c00',
-    marginTop: 20,
-  },
-  actionButtons: {
+  carouselArrowsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems : 'center',
+    gap: 12,
+    marginTop: 12,
   },
-  iconButton: {
-    marginHorizontal: 3,
-    color:'#CC3639',
+  carouselArrowCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  customButton: {
-    backgroundColor: '#edfafa',
-    paddingVertical: 15, // Height of the button
-    paddingHorizontal: 30, // Width of the button
-    borderRadius: 30, // Fully rounded corners
-    marginTop: 15, // Space between the text and button
-    alignItems: 'center', // Center the text horizontally
-    shadowColor: '#000', // Shadow for a raised effect
-    shadowOffset: { width: 10, height: 40 }, // Position the shadow
-    shadowOpacity: 1, // Light shadow opacity
-    shadowRadius: 10, // Spread the shadow
-    elevation: 5, // Elevation for Android
-    textShadowColor: '#CC3639',
-    /*    fontWeight: 'bold',
-    color: 'white',
-    textAlign: 'center',
-    textShadowColor: '#CC3639',
-    textShadowOffset: { width: 3, height: 3 },
-    textShadowRadius: 1,*/
+  sheetTestimonialRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 6,
+    gap: 12,
   },
-  customButtonText: {
-    color: '#cc3639', // White text
-    fontSize: 16, // Text size
-    fontWeight: 'bold', // Bold text style
+  sheetTestimonialAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#232734',
   },
-  songTitle: {
+  sheetTestimonialQuote: {
+    color: '#F1F5F9',
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 6,
+  },
+  sheetTestimonialAuthor: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  sheetTestimonialHandle: {
+    color: '#94A3B8',
+    fontSize: 11,
+  },
+  tabSectionContainer: {
+    width: '100%',
+  },
+  sectionHeading: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  lavenderSpotlightCard: {
+    backgroundColor: '#CFAEF8',
+    borderRadius: 24,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+    overflow: 'hidden',
+  },
+  lavenderLeftCol: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  lavenderCardTitle: {
+    color: '#140D1E',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  lavenderCardSub: {
+    color: '#2D1F42',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  lavenderActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  deepPurplePlayBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#481468',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lavenderOutlineCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+    borderColor: '#2D1F42',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lavenderArtworkImg: {
+    width: 108,
+    height: 108,
+    borderRadius: 18,
+    backgroundColor: '#2D1F42',
+  },
+  listHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  seeAllLinkText: {
+    color: '#94A3B8',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  trackRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#13151C',
+    borderRadius: 18,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  trackRowArtwork: {
+    width: 60,
+    height: 60,
+    borderRadius: 14,
+    backgroundColor: '#222634',
+    marginRight: 14,
+  },
+  trackRowMeta: {
+    flex: 1,
+    marginRight: 10,
+  },
+  trackRowTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  trackRowSub: {
+    color: '#94A3B8',
+    fontSize: 13,
+  },
+  trackRowPlayCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#222530',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackRowPlayCircleActive: {
+    backgroundColor: '#D4F458',
+  },
+  floatingCounterPillWrap: {
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  floatingCounterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#171922',
+    borderRadius: 24,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    gap: 10,
+  },
+  floatingCounterIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(212, 244, 88, 0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingCounterText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  memoirHeaderSub: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: -8,
+    marginBottom: 8,
+  },
+  addMemoirPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D4F458',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    gap: 6,
+  },
+  addMemoirPillText: {
+    color: '#0B0C10',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  memoirCard: {
+    flexDirection: 'row',
+    backgroundColor: '#151821',
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  memoirArtwork: {
+    width: 68,
+    height: 68,
+    borderRadius: 14,
+    backgroundColor: '#232734',
+    marginRight: 14,
+  },
+  memoirCardBody: {
+    flex: 1,
+  },
+  memoirTopMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  memoirTrackTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  memoirArtistName: {
+    color: '#D4F458',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  memoirDeleteIconBtn: {
+    padding: 4,
+  },
+  memoirCommentText: {
+    color: '#E2E8F0',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  memoirFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  memoirTimestampText: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  memoirReadMoreText: {
+    color: '#CFAEF8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  emptyCardBox: {
+    backgroundColor: '#151821',
+    borderRadius: 22,
+    padding: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginVertical: 8,
+  },
+  emptyCardTitle: {
+    color: '#FFFFFF',
     fontSize: 17,
-    fontWeight: 'bold',
-    color: 'white',
+    fontWeight: '700',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  emptyCardSubtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
     textAlign: 'center',
-    textShadowColor: '#CC3639',
-    textShadowOffset: { width: 3, height: 3 },
-    textShadowRadius: 4,
-    fontStyle: 'italic',
-    marginBottom: 10,
+    lineHeight: 19,
+    marginBottom: 18,
+  },
+  chartreusePrimaryBtn: {
+    backgroundColor: '#D4F458',
+    paddingVertical: 11,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  chartreusePrimaryBtnText: {
+    color: '#0B0C10',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  exploreGraphText: {
+    color: '#140D1E',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 440,
+    backgroundColor: '#151821',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  modalHeaderLabel: {
+    color: '#D4F458',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  modalTrackSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  modalTrackCover: {
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+  },
+  modalTrackTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  modalTrackArtist: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    marginTop: 2,
+  },
+  modalTimestamp: {
+    color: '#64748B',
+    fontSize: 11,
+    marginTop: 4,
+  },
+  modalCommentScroll: {
+    maxHeight: 200,
+    backgroundColor: '#0E1016',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  modalCommentFullText: {
+    color: '#F1F5F9',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  deleteMemoirModalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    gap: 6,
+  },
+  deleteMemoirModalText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
 

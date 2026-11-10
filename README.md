@@ -109,17 +109,22 @@ TubeApp/
 ├── App.js                      # Root application & Stack Navigator definition
 ├── app.json                    # Expo project configuration (permissions, plugins, icons)
 ├── auth-api.js                 # Firebase Authentication helper functions
-├── BadgeAwarder.js             # User achievement evaluation and badge rendering
 ├── ChatScreen.js               # Direct messaging screen with live message stream
-├── future_features/            # Staged features for future releases (Daily Tune, Coplay, The Pipeline, Party Creator)
+├── future_features/            # Staged features for future releases (Daily Tune, Coplay, The Pipeline, AI Similarity Finder, Badges)
+│   ├── BadgeAwarder.js         # User achievement evaluation and badge rendering
 │   ├── Coplay.js
 │   ├── CreateParty.js
 │   ├── CreatePipeline.js
 │   ├── GuessPage.js
 │   ├── JoinParty.js
 │   ├── JoinPipeline.js
+│   ├── ml_service/             # ML similarity microservice & FAISS indexes
 │   ├── MusicOfTheDayScreen.js  # Staged Daily Tune picker & calendar
 │   ├── PlayShare.js
+│   ├── SimilarityFinderWidget.js # AI Similarity Finder & Calculator widget
+│   ├── similarityEngine.js     # 68-D Librosa & 384-D ONNX similarity engine
+│   ├── similarityEngine.test.js # Test suite for similarity engine
+│   ├── test_user_scenarios.py  # Python scenario testing script
 │   └── Thepipeline.js
 ├── CustomProgressBar.js        # Reusable custom progress indicator
 ├── FadingCarousel.js           # Image fade carousel for profiles
@@ -138,7 +143,7 @@ TubeApp/
 ├── NotifPage.js                # Social notifications and friend activity
 ├── NotificationSettings.js     # User notification preferences
 ├── Pickerchoosers.js           # Thematic song shelves for The Collective
-├── ProfileScreen.js            # User profile (badges, history, Your13, memoirs, gallery)
+├── ProfileScreen.js            # User profile (Your13, memoirs, Sonic Twin, gallery)
 ├── RankedMusicList.js          # Community 13 charts (songs, artists, genres)
 ├── RankedUsers.js              # Users ranked by taste compatibility
 ├── RegistrationStack.js        # Auth stack (Login / SignUp)

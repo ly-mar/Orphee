@@ -1,4 +1,4 @@
-// __tests__/similarityEngine.test.js
+// future_features/similarityEngine.test.js
 import {
     PRECOMPUTED_SONG_CATALOG,
     EXPECTED_AUDIO_DIM,
@@ -6,7 +6,7 @@ import {
     calculateSimilarity,
     getTop10Similar,
     denseCosineSimilarity,
-} from '../utils/similarityEngine';
+} from './similarityEngine';
 
 describe('Real 68-D Librosa & 384-D ONNX Similarity Engine', () => {
     test('1. Catalog loads all 194+ tracks with verified 68-D audio and 384-D lyric vectors', () => {

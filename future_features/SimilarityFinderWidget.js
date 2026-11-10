@@ -22,7 +22,7 @@ import {
     embedTrackViaMLService,
     calculateSimilarity,
     hydrateTrackForSimilarity,
-} from '../utils/similarityEngine';
+} from './similarityEngine';
 import { createDebouncedSearch, getHighResImage } from '../services/musicApi';
 import Taskbar from '../Taskbar';
 

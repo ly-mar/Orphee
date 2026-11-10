@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, SafeAreaView, TouchableOpacity } from 'react-native';
-import { db, auth } from './firebaseConfig';
+import { db, auth } from '../firebaseConfig';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import FirstUploadBadge from './assets/FirstUploadBadge.png';
-import HipHopLoverBadge from './assets/HipHopLoverBadge.png';
-import TripleUploadBadge from './assets/TripleUploadBadge.png';
-import ProlificUploaderBadge from './assets/ProlificUploaderBadge.png';
-import LegendaryUploaderBadge from './assets/LegendaryUploaderBadge.png';
+import FirstUploadBadge from '../assets/FirstUploadBadge.png';
+import HipHopLoverBadge from '../assets/HipHopLoverBadge.png';
+import TripleUploadBadge from '../assets/TripleUploadBadge.png';
+import ProlificUploaderBadge from '../assets/ProlificUploaderBadge.png';
+import LegendaryUploaderBadge from '../assets/LegendaryUploaderBadge.png';
 
 const BadgeAwarder = ({ uid, route, navigation }) => {
   const userId = route?.params?.userId ?? auth.currentUser?.uid;

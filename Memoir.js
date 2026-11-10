@@ -2,556 +2,455 @@
 import React, { useState, useEffect } from 'react';
 import {
     View,
-    Text,
+    StyleSheet,
+    SafeAreaView,
+    ScrollView,
     TextInput,
     TouchableOpacity,
-    Modal,
-    FlatList,
-    StyleSheet,
-    Dimensions,
-    SafeAreaView,
     Image,
-    Alert,
     ActivityIndicator,
+    Alert,
+    Platform,
 } from 'react-native';
-import Taskbar from './Taskbar';
-import { FontAwesome5 } from '@expo/vector-icons';
-import { doc, setDoc, updateDoc, arrayUnion, getDoc, Timestamp } from 'firebase/firestore';
+import { Text } from 'react-native-paper';
+import axios from 'axios';
 import { auth, db } from './firebaseConfig';
-import eventEmitter from './events';
+import {
+    collection,
+    addDoc,
+    doc,
+    getDoc,
+    setDoc,
+    updateDoc,
+    arrayUnion,
+    serverTimestamp,
+} from 'firebase/firestore';
+import { Feather } from '@expo/vector-icons';
+import Taskbar from './Taskbar';
 
-const windowWidth = Dimensions.get('window').width;
+export const normalizeTrack = (raw = {}) => ({
+    trackId: raw.trackId || raw.id || Date.now(),
+    trackName: raw.trackName || raw.title || 'Unknown Track',
+    title: raw.trackName || raw.title || 'Unknown Track',
+    artistName: raw.artistName || raw.artist || 'Unknown Artist',
+    artist: raw.artistName || raw.artist || 'Unknown Artist',
+    artworkUrl100:
+        raw.artworkUrl100 || raw.imageUrl || 'https://via.placeholder.com/300',
+    imageUrl:
+        (raw.artworkUrl100 || raw.imageUrl || 'https://via.placeholder.com/300').replace(
+            '100x100',
+            '400x400'
+        ),
+    previewUrl: raw.previewUrl || raw.audioUrl || null,
+    primaryGenreName: raw.primaryGenreName || raw.genre || 'Music',
+    releaseDate: raw.releaseDate || new Date().toISOString(),
+});
 
-export const normalizeTrack = (raw = {}) => {
-    const trackId = Number(raw.trackId || raw.id || Date.now());
-    const trackName = raw.trackName || raw.title || 'Unknown Track';
-    const artistName = raw.artistName || raw.artist || 'Unknown Artist';
-    const collectionName = raw.collectionName || raw.album || 'Single';
-    const artworkUrl100 =
-        raw.artworkUrl100 || raw.imageUrl || 'https://via.placeholder.com/300';
-    const previewUrl = raw.previewUrl || '';
-    const primaryGenreName = raw.primaryGenreName || raw.genre || 'Music';
-    const releaseDate = raw.releaseDate || new Date().toISOString();
-
-    return {
-        trackId,
-        id: trackId,
-        trackName,
-        title: trackName,
-        artistName,
-        artist: artistName,
-        collectionName,
-        artworkUrl100,
-        imageUrl: artworkUrl100,
-        previewUrl,
-        primaryGenreName,
-        genre: primaryGenreName,
-        releaseDate,
-    };
+const showAlert = (title, message) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert(`${title ? title + ': ' : ''}${message}`);
+    } else {
+        Alert.alert(title, message);
+    }
 };
 
-const getHighResImage = (imageUrl) => {
-    if (!imageUrl) return 'https://via.placeholder.com/400';
-    return imageUrl.replace('100x100', '400x400');
-};
-
-const MemoirSearchPage = ({ navigation }) => {
+export default function Memoir({ route, navigation }) {
+    const routeTrack = route?.params?.song || route?.params?.track || null;
     const [searchQuery, setSearchQuery] = useState('');
-    const [debouncedQuery, setDebouncedQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
-    const [loading, setLoading] = useState(false);
+    const [selectedTrack, setSelectedTrack] = useState(() => routeTrack ? normalizeTrack(routeTrack) : null);
     const [comment, setComment] = useState('');
-    const [isModalVisible, setIsModalVisible] = useState(false);
-    const [memoirSelection, setMemoirSelection] = useState(null);
+    const [loadingSearch, setLoadingSearch] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [username, setUsername] = useState('Sigma');
 
     useEffect(() => {
-        if (searchQuery.trim().length >= 2) {
-            const timer = setTimeout(() => {
-                setDebouncedQuery(searchQuery.trim());
-            }, 380);
-            return () => clearTimeout(timer);
-        } else {
-            setDebouncedQuery('');
+        const loadUser = async () => {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            try {
+                const snap = await getDoc(doc(db, 'users', uid));
+                if (snap.exists() && snap.data().username) {
+                    setUsername(snap.data().username);
+                }
+            } catch (_) { }
+        };
+        loadUser();
+    }, []);
+
+    useEffect(() => {
+        if (searchQuery.trim().length < 2) {
             setSearchResults([]);
+            return;
         }
+        const timer = setTimeout(async () => {
+            try {
+                setLoadingSearch(true);
+                const res = await axios.get('https://itunes.apple.com/search', {
+                    params: {
+                        term: searchQuery.trim(),
+                        media: 'music',
+                        entity: 'song',
+                        limit: 12,
+                    },
+                });
+                setSearchResults((res.data?.results || []).map(normalizeTrack));
+            } catch (err) {
+                console.error('Error searching iTunes:', err);
+            } finally {
+                setLoadingSearch(false);
+            }
+        }, 350);
+
+        return () => clearTimeout(timer);
     }, [searchQuery]);
 
-    useEffect(() => {
-        if (debouncedQuery.length >= 2) {
-            fetchMusic(debouncedQuery);
-        }
-    }, [debouncedQuery]);
-
-    const fetchMusic = async (queryTerm) => {
-        try {
-            setLoading(true);
-            const response = await fetch(
-                `https://itunes.apple.com/search?term=${encodeURIComponent(
-                    queryTerm
-                )}&media=music&entity=song&limit=25`
-            );
-            const data = await response.json();
-            const normalized = Array.isArray(data.results)
-                ? data.results.map(normalizeTrack)
-                : [];
-            setSearchResults(normalized);
-        } catch (error) {
-            console.error('Error fetching music:', error);
-            setSearchResults([]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const addMemoirToFirestore = async (userId, memoir) => {
-        const userRef = doc(db, 'memoirs', userId);
-        const docSnapshot = await getDoc(userRef);
-
-        const entry = {
-            id: `${userId}_${Date.now()}`,
-            item: normalizeTrack(memoir.item),
-            comment: memoir.comment,
-            timestamp: Timestamp.now(),
-        };
-
-        if (!docSnapshot.exists()) {
-            await setDoc(userRef, { pastMemoirs: [entry] });
-        } else {
-            await updateDoc(userRef, {
-                pastMemoirs: arrayUnion(entry),
-            });
-        }
-        return entry;
-    };
-
-    const handleCommentSubmit = async () => {
-        if (!memoirSelection || !comment.trim()) {
-            Alert.alert('Incomplete Memoir', 'Please write a reflection for this track.');
+    const handleSaveMemoir = async () => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+            showAlert('Authentication Required', 'Please log in to publish a song memoir.');
             return;
         }
-
-        const userId = auth.currentUser?.uid;
-        if (!userId) {
-            Alert.alert('Authentication Required', 'Please sign in to save your memoir.');
+        if (!selectedTrack) {
+            showAlert('Select a Song', 'Please search for a song above and tap "+" to attach it to your memoir.');
+            return;
+        }
+        if (!comment.trim()) {
+            showAlert('Add Reflection', 'Please write your reflection or memory in the text box below.');
             return;
         }
 
         try {
-            const savedEntry = await addMemoirToFirestore(userId, {
-                item: memoirSelection,
+            setSaving(true);
+            const normalized = normalizeTrack(selectedTrack);
+
+            // 1. Primary write: Save to doc(db, 'memoirs', uid) pastMemoirs array
+            // This strictly satisfies Firestore production rule `match /memoirs/{userId} { allow write: if isOwner(userId); }`
+            // and guarantees successful saves across web, iOS, and Android without permission errors.
+            const memoirId = `${uid}_${Date.now()}`;
+            const historyEntry = {
+                id: memoirId,
+                item: normalized,
                 comment: comment.trim(),
-            });
+                timestamp: {
+                    seconds: Math.floor(Date.now() / 1000),
+                    nanoseconds: 0,
+                },
+                createdAt: new Date().toISOString(),
+                userId: uid,
+                username: username || 'Sigma',
+                trackId: normalized.trackId,
+                title: normalized.trackName,
+                trackName: normalized.trackName,
+                artist: normalized.artistName,
+                artistName: normalized.artistName,
+                collectionName: normalized.collectionName || '',
+                imageUrl: normalized.imageUrl || normalized.artworkUrl100,
+                artworkUrl100: normalized.artworkUrl100,
+                previewUrl: normalized.previewUrl || '',
+                primaryGenreName: normalized.primaryGenreName || 'Music',
+            };
 
-            eventEmitter.emit('memoirSelected', savedEntry);
+            const userRef = doc(db, 'memoirs', uid);
+            const userDocSnap = await getDoc(userRef);
 
-            setIsModalVisible(false);
+            if (!userDocSnap.exists()) {
+                await setDoc(userRef, {
+                    userId: uid,
+                    username: username || 'Sigma',
+                    pastMemoirs: [historyEntry],
+                    updatedAt: new Date().toISOString(),
+                });
+            } else {
+                const existingMemoirs = userDocSnap.data()?.pastMemoirs;
+                if (Array.isArray(existingMemoirs)) {
+                    await updateDoc(userRef, {
+                        pastMemoirs: arrayUnion(historyEntry),
+                        updatedAt: new Date().toISOString(),
+                    });
+                } else {
+                    await setDoc(
+                        userRef,
+                        {
+                            userId: uid,
+                            username: username || 'Sigma',
+                            pastMemoirs: [historyEntry],
+                            updatedAt: new Date().toISOString(),
+                        },
+                        { merge: true }
+                    );
+                }
+            }
+
+            // 2. Opportunistic secondary write to individual document in 'memoirs' collection
+            // Wrapped safely so that if deployed production rules strictly enforce memoirs/{userId},
+            // any auto-generated ID permission rejection is caught and ignored gracefully.
+            try {
+                await addDoc(collection(db, 'memoirs'), {
+                    ...historyEntry,
+                    timestamp: serverTimestamp(),
+                });
+            } catch (collectionErr) {
+                console.log('Individual memoir collection addDoc bypassed (production enforces memoirs/{userId}):', collectionErr?.message);
+            }
+
+            showAlert('Memoir Published', 'Your song memory has been added to your profile.');
             setComment('');
-            setMemoirSelection(null);
-            Alert.alert('Memoir Saved', 'Your musical memory has been archived.');
+            setSelectedTrack(null);
+            setSearchQuery('');
+            navigation.navigate('ProfileScreen');
         } catch (error) {
-            console.error('Error adding memoir:', error);
-            Alert.alert('Error', 'Unable to save memoir right now.');
+            console.error('Error saving memoir:', error);
+            showAlert('Save Error', error?.message || 'Could not save your memoir. Please try again.');
+        } finally {
+            setSaving(false);
         }
-    };
-
-    const handleSelect = (item) => {
-        setMemoirSelection(normalizeTrack(item));
-        setIsModalVisible(true);
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.topHeader}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <FontAwesome5 name="arrow-left" size={14} color="#FFF" />
-                    <Text style={styles.backBtnText}>Back</Text>
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>New Song Memoir</Text>
-                <TouchableOpacity
-                    onPress={() => navigation.navigate('MemoirHistoryScreen')}
-                    style={styles.historyBtn}
-                >
-                    <FontAwesome5 name="history" size={13} color="#FF8C00" />
-                    <Text style={styles.historyBtnText}>Archive</Text>
-                </TouchableOpacity>
-            </View>
-
-            <View style={styles.searchBarContainer}>
-                <FontAwesome5 name="search" size={15} color="#FF8C00" style={{ marginRight: 10 }} />
-                <TextInput
-                    style={styles.searchBar}
-                    placeholder="Search iTunes for a song that holds a memory..."
-                    placeholderTextColor="#718096"
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                />
-            </View>
-
-            {loading && (
-                <ActivityIndicator size="small" color="#FF8C00" style={{ marginVertical: 10 }} />
-            )}
-
-            <FlatList
-                data={searchResults}
-                keyExtractor={(item) => item.trackId.toString()}
-                contentContainerStyle={styles.listContent}
-                renderItem={({ item }) => (
-                    <View style={styles.resultCard}>
-                        <TouchableOpacity
-                            onPress={() => navigation.navigate('SongDetails', { song: item })}
-                        >
-                            <Image
-                                source={{ uri: getHighResImage(item.artworkUrl100) }}
-                                style={styles.resultCoverImage}
-                            />
-                        </TouchableOpacity>
-
-                        <View style={styles.resultInfoContainer}>
-                            <Text style={styles.trackTitle} numberOfLines={1}>
-                                {item.trackName}
-                            </Text>
-                            <Text style={styles.artistName} numberOfLines={1}>
-                                {item.artistName}
-                            </Text>
-                            <Text style={styles.genre} numberOfLines={1}>
-                                {item.primaryGenreName}
-                                {item.releaseDate
-                                    ? ` • ${new Date(item.releaseDate).getFullYear()}`
-                                    : ''}
-                            </Text>
-
-                            <View style={styles.cardActions}>
-                                <TouchableOpacity
-                                    style={styles.writeMemoirBtn}
-                                    onPress={() => handleSelect(item)}
-                                >
-                                    <FontAwesome5 name="pen-nib" size={12} color="#000" />
-                                    <Text style={styles.writeMemoirBtnText}>Write Memoir</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.previewLinkBtn}
-                                    onPress={() => navigation.navigate('SongDetails', { song: item })}
-                                >
-                                    <FontAwesome5 name="play" size={10} color="#FF8C00" />
-                                    <Text style={styles.previewLinkText}>Preview</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-                )}
-                ListEmptyComponent={
-                    !loading && (
-                        <Text style={styles.noResultsText}>
-                            {searchQuery.trim().length >= 2
-                                ? 'No matching songs found.'
-                                : 'Search a track above to attach a personal memory.'}
+        <SafeAreaView style={styles.safeArea}>
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+                <View style={styles.headerRow}>
+                    <TouchableOpacity
+                        style={styles.backCircleBtn}
+                        onPress={() => navigation.goBack()}
+                    >
+                        <Feather name="chevron-left" size={20} color="#FFFFFF" />
+                    </TouchableOpacity>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={styles.screenTitle}>Add Song Memoir</Text>
+                        <Text style={styles.screenSub}>
+                            Attach a personal story or timestamp to a track
                         </Text>
-                    )
-                }
-            />
-
-            <Modal
-                visible={isModalVisible}
-                animationType="slide"
-                transparent
-                onRequestClose={() => setIsModalVisible(false)}
-            >
-                <View style={styles.modalBackdrop}>
-                    <View style={styles.modalSheet}>
-                        <View style={styles.modalTopRow}>
-                            <Text style={styles.modalHeaderTitle}>Attach Memory</Text>
-                            <TouchableOpacity
-                                onPress={() => setIsModalVisible(false)}
-                                style={styles.closeButton}
-                            >
-                                <FontAwesome5 name="times" size={18} color="#A0AEC0" />
-                            </TouchableOpacity>
-                        </View>
-
-                        {memoirSelection && (
-                            <>
-                                <View style={styles.trackCard}>
-                                    <Image
-                                        source={{ uri: getHighResImage(memoirSelection.artworkUrl100) }}
-                                        style={styles.modalCoverImage}
-                                    />
-                                    <View style={styles.modalTrackInfo}>
-                                        <Text style={styles.modalTrackTitle} numberOfLines={1}>
-                                            {memoirSelection.trackName}
-                                        </Text>
-                                        <Text style={styles.modalArtistName} numberOfLines={1}>
-                                            {memoirSelection.artistName}
-                                        </Text>
-                                    </View>
-                                </View>
-
-                                <View style={styles.commentSection}>
-                                    <TextInput
-                                        style={styles.commentInput}
-                                        placeholder="What memory does this song bring back?"
-                                        placeholderTextColor="#718096"
-                                        value={comment}
-                                        onChangeText={setComment}
-                                        multiline
-                                    />
-                                    <TouchableOpacity
-                                        style={styles.submitButton}
-                                        onPress={handleCommentSubmit}
-                                    >
-                                        <FontAwesome5 name="paper-plane" size={15} color="#000" />
-                                        <Text style={styles.submitButtonText}>Save</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </>
-                        )}
                     </View>
                 </View>
-            </Modal>
 
-            <View style={styles.taskbarContainer}>
-                <Taskbar />
-            </View>
+                <View style={styles.searchBar}>
+                    <Feather name="search" size={16} color="#94A3B8" />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Search song or artist..."
+                        placeholderTextColor="#64748B"
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                    />
+                </View>
+
+                {loadingSearch && (
+                    <ActivityIndicator size="small" color="#D4F458" style={{ marginVertical: 10 }} />
+                )}
+
+                {searchResults.length > 0 && !selectedTrack && (
+                    <View style={styles.resultsCard}>
+                        {searchResults.map((item) => (
+                            <TouchableOpacity
+                                key={item.trackId}
+                                style={styles.resultRow}
+                                onPress={() => {
+                                    setSelectedTrack(item);
+                                    setSearchResults([]);
+                                    setSearchQuery('');
+                                }}
+                            >
+                                <Image source={{ uri: item.imageUrl }} style={styles.resultCover} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.resultTitle} numberOfLines={1}>
+                                        {item.trackName}
+                                    </Text>
+                                    <Text style={styles.resultArtist} numberOfLines={1}>
+                                        {item.artistName}
+                                    </Text>
+                                </View>
+                                <Feather name="plus-circle" size={18} color="#D4F458" />
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
+
+                {selectedTrack && (
+                    <View style={styles.selectedTrackCard}>
+                        <Image source={{ uri: selectedTrack.imageUrl }} style={styles.selectedArt} />
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.selectedTitle}>{selectedTrack.trackName}</Text>
+                            <Text style={styles.selectedArtist}>{selectedTrack.artistName}</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setSelectedTrack(null)}>
+                            <Feather name="x-circle" size={20} color="#94A3B8" />
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                <Text style={styles.inputLabel}>Your Reflection</Text>
+                <TextInput
+                    style={styles.memoirTextArea}
+                    placeholder="Write the memory, moment, or story this song brings back..."
+                    placeholderTextColor="#64748B"
+                    multiline
+                    value={comment}
+                    onChangeText={setComment}
+                />
+
+                <TouchableOpacity
+                    style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+                    onPress={handleSaveMemoir}
+                    disabled={saving}
+                    activeOpacity={0.85}
+                >
+                    {saving ? (
+                        <View style={styles.savingRow}>
+                            <ActivityIndicator size="small" color="#0B0C10" />
+                            <Text style={styles.saveBtnText}>Publishing Memoir...</Text>
+                        </View>
+                    ) : (
+                        <Text style={styles.saveBtnText}>Publish Song Memoir</Text>
+                    )}
+                </TouchableOpacity>
+            </ScrollView>
+
+            <Taskbar navigation={navigation} />
         </SafeAreaView>
     );
-};
+}
 
 const styles = StyleSheet.create({
-    container: {
+    safeArea: {
         flex: 1,
-        backgroundColor: '#0D0E12',
+        backgroundColor: '#0B0C10',
     },
-    topHeader: {
+    scrollContent: {
+        padding: 18,
+        paddingBottom: 120,
+        maxWidth: 520,
+        width: '100%',
+        alignSelf: 'center',
+    },
+    headerRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#1F2430',
+        marginBottom: 20,
     },
-    backBtn: {
-        flexDirection: 'row',
+    backCircleBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#171922',
         alignItems: 'center',
-        backgroundColor: '#1A1E29',
-        paddingVertical: 7,
-        paddingHorizontal: 12,
-        borderRadius: 8,
-        gap: 6,
+        justifyContent: 'center',
     },
-    backBtnText: {
+    screenTitle: {
         color: '#FFFFFF',
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    headerTitle: {
-        color: '#FFFFFF',
-        fontSize: 18,
+        fontSize: 24,
         fontWeight: '800',
     },
-    historyBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(255, 140, 0, 0.14)',
-        borderWidth: 1,
-        borderColor: '#FF8C00',
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-        borderRadius: 8,
-        gap: 6,
-    },
-    historyBtnText: {
-        color: '#FF8C00',
-        fontSize: 12,
-        fontWeight: '700',
-    },
-    searchBarContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginHorizontal: 16,
-        marginVertical: 12,
-        paddingHorizontal: 14,
-        backgroundColor: '#161922',
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#242936',
-        height: 46,
+    screenSub: {
+        color: '#94A3B8',
+        fontSize: 13,
     },
     searchBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#151821',
+        borderRadius: 18,
+        paddingHorizontal: 14,
+        height: 48,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        marginBottom: 14,
+    },
+    searchInput: {
         flex: 1,
         color: '#FFFFFF',
         fontSize: 14,
+        marginLeft: 10,
     },
-    listContent: {
-        paddingHorizontal: 16,
-        paddingBottom: 90,
-    },
-    resultCard: {
-        flexDirection: 'row',
-        backgroundColor: '#161922',
-        borderRadius: 12,
-        marginBottom: 10,
+    resultsCard: {
+        backgroundColor: '#151821',
+        borderRadius: 18,
         padding: 10,
-        borderWidth: 1,
-        borderColor: '#242936',
-        alignItems: 'center',
+        marginBottom: 16,
     },
-    resultCoverImage: {
-        width: 72,
-        height: 72,
-        borderRadius: 8,
-        marginRight: 12,
-    },
-    resultInfoContainer: {
-        flex: 1,
-    },
-    trackTitle: {
-        fontSize: 15,
-        fontWeight: '700',
-        color: '#FFFFFF',
-    },
-    artistName: {
-        fontSize: 13,
-        color: '#CBD5E1',
-        marginTop: 2,
-    },
-    genre: {
-        fontSize: 11,
-        color: '#718096',
-        marginTop: 2,
-        marginBottom: 8,
-    },
-    cardActions: {
+    resultRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-    },
-    writeMemoirBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FF8C00',
-        paddingVertical: 5,
-        paddingHorizontal: 10,
-        borderRadius: 6,
-        gap: 6,
-    },
-    writeMemoirBtnText: {
-        color: '#000000',
-        fontSize: 12,
-        fontWeight: '700',
-    },
-    previewLinkBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#FF8C00',
-        paddingVertical: 4,
-        paddingHorizontal: 10,
-        borderRadius: 6,
-        gap: 5,
-    },
-    previewLinkText: {
-        color: '#FF8C00',
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    noResultsText: {
-        textAlign: 'center',
-        color: '#718096',
-        marginTop: 32,
-        fontSize: 14,
-    },
-    modalBackdrop: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-    },
-    modalSheet: {
-        width: '100%',
-        maxWidth: 420,
-        backgroundColor: '#161922',
-        borderRadius: 16,
-        padding: 20,
-        borderWidth: 1,
-        borderColor: '#2A3142',
-    },
-    modalTopRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 14,
-    },
-    modalHeaderTitle: {
-        color: '#FFFFFF',
-        fontSize: 18,
-        fontWeight: '800',
-    },
-    closeButton: {
-        padding: 4,
-    },
-    trackCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#0D1017',
-        padding: 12,
-        borderRadius: 12,
-        marginBottom: 14,
-    },
-    modalCoverImage: {
-        width: 64,
-        height: 64,
-        borderRadius: 8,
-        marginRight: 12,
-    },
-    modalTrackInfo: {
-        flex: 1,
-    },
-    modalTrackTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: '#FFFFFF',
-    },
-    modalArtistName: {
-        fontSize: 13,
-        color: '#FF8C00',
-        marginTop: 3,
-    },
-    commentSection: {
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
         gap: 12,
     },
-    commentInput: {
-        minHeight: 80,
-        padding: 12,
+    resultCover: {
+        width: 46,
+        height: 46,
         borderRadius: 10,
-        backgroundColor: '#0D1017',
+    },
+    resultTitle: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    resultArtist: {
+        color: '#94A3B8',
+        fontSize: 12,
+    },
+    selectedTrackCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#171922',
+        borderRadius: 18,
+        padding: 12,
+        marginBottom: 18,
+        borderWidth: 1,
+        borderColor: '#D4F458',
+        gap: 12,
+    },
+    selectedArt: {
+        width: 58,
+        height: 58,
+        borderRadius: 12,
+    },
+    selectedTitle: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '800',
+    },
+    selectedArtist: {
+        color: '#D4F458',
+        fontSize: 13,
+        marginTop: 2,
+    },
+    inputLabel: {
         color: '#FFFFFF',
         fontSize: 15,
-        borderWidth: 1,
-        borderColor: '#242936',
-        textAlignVertical: 'top',
+        fontWeight: '700',
+        marginBottom: 8,
     },
-    submitButton: {
+    memoirTextArea: {
+        backgroundColor: '#151821',
+        borderRadius: 18,
+        padding: 16,
+        color: '#FFFFFF',
+        fontSize: 15,
+        minHeight: 140,
+        textAlignVertical: 'top',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        marginBottom: 20,
+    },
+    saveBtn: {
+        backgroundColor: '#D4F458',
+        paddingVertical: 15,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    savingRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#FF8C00',
-        paddingVertical: 12,
-        borderRadius: 10,
         gap: 8,
     },
-    submitButtonText: {
-        color: '#000000',
-        fontWeight: '800',
+    saveBtnText: {
+        color: '#0B0C10',
         fontSize: 15,
-    },
-    taskbarContainer: {
-        position: 'absolute',
-        bottom: 0,
-        width: '100%',
-        backgroundColor: '#0D1017',
+        fontWeight: '800',
     },
 });
-
-export default MemoirSearchPage;

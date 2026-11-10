@@ -1,314 +1,303 @@
 // UploadProfilePicture.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
-  Button,
-  ActivityIndicator,
-  SafeAreaView,
-  TouchableOpacity,
-  Text,
   StyleSheet,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator,
   Alert,
+  SafeAreaView,
 } from 'react-native';
+import { Text } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
-import {
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject,
-} from 'firebase/storage';
-import {
-  collection,
-  addDoc,
-  doc,
-  onSnapshot,
-  query,
-  where,
-  deleteDoc,
-  getDocs,
-  getDoc,
-  setDoc,
-} from 'firebase/firestore';
-import { storage, db, auth } from './firebaseConfig';
-import FadingCarousel from './FadingCarousel';
+import { auth, db, storage } from './firebaseConfig';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
+import { Feather } from '@expo/vector-icons';
+import { compressImageForUpload } from './ProfileScreen';
 
-const DEFAULT_AVATAR =
-  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200';
-
-export const pickImage = async () => {
-  try {
-    const result = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!result.granted) {
-      Alert.alert('Permission Required', 'Permission to access gallery is required!');
-      return null;
-    }
-
-    const pickerResult = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.85,
-    });
-
-    if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets.length > 0) {
-      return pickerResult.assets[0];
-    }
-    return null;
-  } catch (error) {
-    console.error('Error picking image:', error);
-    return null;
-  }
-};
-
-export const uploadImage = async (uri, userId) => {
-  if (!uri || typeof uri !== 'string') {
-    throw new Error('Invalid URI: URI is null or not a string');
-  }
-  if (!userId) {
-    throw new Error('Cannot upload image without a valid userId');
-  }
-
-  const response = await fetch(uri);
-  if (!response.ok) {
-    throw new Error('Failed to fetch the image from the given URI');
-  }
-  const blob = await response.blob();
-
-  const fileName = `${Date.now()}`;
-  const storagePath = `profileImages/${userId}/${fileName}`;
-  const storageRef = ref(storage, storagePath);
-  const uploadTask = uploadBytesResumable(storageRef, blob);
-
-  return new Promise((resolve, reject) => {
-    uploadTask.on(
-      'state_changed',
-      null,
-      (error) => {
-        console.error('Upload failed:', error);
-        reject(error);
-      },
-      async () => {
-        try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-
-          await addDoc(collection(db, 'images'), {
-            userId,
-            downloadURL,
-            storagePath,
-            uploadedAt: Date.now(),
-          });
-
-          await setDoc(
-            doc(db, 'users', userId),
-            { profileImageUrl: downloadURL },
-            { merge: true }
-          );
-
-          resolve(downloadURL);
-        } catch (err) {
-          reject(err);
-        }
-      }
-    );
-  });
-};
-
-export const deleteImage = async (docId, downloadURLOrPath, userId) => {
-  try {
-    if (downloadURLOrPath) {
-      const storageRef = downloadURLOrPath.startsWith('http')
-        ? ref(storage, downloadURLOrPath)
-        : ref(
-          storage,
-          downloadURLOrPath.includes('profileImages/')
-            ? downloadURLOrPath
-            : `profileImages/${userId}/${downloadURLOrPath.split('/').pop()}`
-        );
-      try {
-        await deleteObject(storageRef);
-      } catch (storageErr) {
-        console.warn('Storage object already removed or inaccessible:', storageErr.message);
-      }
-    }
-
-    if (docId) {
-      await deleteDoc(doc(db, 'images', docId));
-    }
-  } catch (error) {
-    console.error('Error deleting image:', error);
-    throw error;
-  }
-};
-
-export const loadUserProfilePic = async (userId) => {
-  if (!userId) return DEFAULT_AVATAR;
-
-  try {
-    // 1. O(1) direct lookup on users/{userId}
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    if (userDoc.exists() && userDoc.data()?.profileImageUrl) {
-      return userDoc.data().profileImageUrl;
-    }
-
-    // 2. Fallback query on images collection without requiring a composite index
-    const imagesQuery = query(
-      collection(db, 'images'),
-      where('userId', '==', userId)
-    );
-    const imagesSnapshot = await getDocs(imagesQuery);
-
-    if (!imagesSnapshot.empty) {
-      const sorted = imagesSnapshot.docs
-        .map((d) => d.data())
-        .sort((a, b) => {
-          const timeA = a.uploadedAt?.seconds ? a.uploadedAt.seconds * 1000 : Number(a.uploadedAt) || 0;
-          const timeB = b.uploadedAt?.seconds ? b.uploadedAt.seconds * 1000 : Number(b.uploadedAt) || 0;
-          return timeB - timeA;
-        });
-
-      if (sorted[0]?.downloadURL) {
-        return sorted[0].downloadURL;
-      }
-    }
-
-    return DEFAULT_AVATAR;
-  } catch (error) {
-    return DEFAULT_AVATAR;
-  }
-};
-
-const UploadProfilePicture = ({ route, navigation }) => {
+export default function UploadProfilePicture({ navigation }) {
+  const [selectedUri, setSelectedUri] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [mediaList, setMediaList] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState(0);
 
-  const userId = route?.params?.userId ?? auth.currentUser?.uid;
+  const pickImage = async () => {
+    try {
+      const permissionResult =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Please grant photo library access to upload a profile picture.'
+        );
+        return;
+      }
 
-  useEffect(() => {
-    if (!userId) {
-      setLoading(false);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.75,
+      });
+
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setSelectedUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Image Picker Error', 'Failed to select image from your device.');
+    }
+  };
+
+  const handleUpload = async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert('Not Authenticated', 'Please sign in before uploading an avatar.');
+      return;
+    }
+    if (!selectedUri) {
+      Alert.alert('No Image Selected', 'Please select an image first.');
       return;
     }
 
-    const imagesQuery = query(
-      collection(db, 'images'),
-      where('userId', '==', userId)
-    );
+    setUploading(true);
+    setProgress(0);
+    let compressed = null;
 
-    const unsubscribe = onSnapshot(
-      imagesQuery,
-      (snapshot) => {
-        const userMedia = snapshot.docs
-          .map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-          .sort((a, b) => {
-            const timeA = a.uploadedAt?.seconds
-              ? a.uploadedAt.seconds * 1000
-              : Number(a.uploadedAt) || 0;
-            const timeB = b.uploadedAt?.seconds
-              ? b.uploadedAt.seconds * 1000
-              : Number(b.uploadedAt) || 0;
-            return timeB - timeA;
-          });
-
-        setMediaList(userMedia);
-        setLoading(false);
-      },
-      (error) => {
-        console.warn('Error listening to user images:', error.message);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [userId]);
-
-  const handlePickImage = async () => {
     try {
-      const selectedAsset = await pickImage();
-      if (selectedAsset?.uri && userId) {
-        setUploading(true);
-        await uploadImage(selectedAsset.uri, userId);
-        setUploading(false);
+      compressed = await compressImageForUpload(selectedUri, 400, 0.72);
+      const { blob, contentType } = compressed;
+
+      const filename = `avatar_${user.uid}_${Date.now()}.jpg`;
+      const storageRef = ref(storage, `images/${user.uid}/${filename}`);
+
+      // Pass explicit MIME contentType metadata required by storage.rules
+      const metadata = {
+        contentType: contentType || 'image/jpeg',
+        customMetadata: {
+          userId: user.uid,
+          uploadedAt: new Date().toISOString(),
+        },
+      };
+
+      const uploadTask = uploadBytesResumable(storageRef, blob, metadata);
+
+      const downloadUrl = await new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            if (snapshot.totalBytes > 0) {
+              setProgress(
+                Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
+              );
+            }
+          },
+          (error) => reject(error),
+          async () => {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(url);
+          }
+        );
+      });
+
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          profileImageUrl: downloadUrl,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      await addDoc(collection(db, 'images'), {
+        userId: user.uid,
+        imageUrl: downloadUrl,
+        createdAt: new Date().toISOString(),
+      });
+
+      Alert.alert('Success', 'Your profile picture has been updated.');
+      if (navigation?.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation?.navigate('ProfileScreen');
       }
     } catch (error) {
-      console.error('Error handling image upload:', error);
+      console.warn('Storage upload error:', error?.code || error?.message);
+
+      if (compressed?.dataUrl) {
+        try {
+          await setDoc(
+            doc(db, 'users', user.uid),
+            {
+              profileImageUrl: compressed.dataUrl,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+          Alert.alert(
+            'Profile Updated (Optimized Fallback)',
+            'Firebase Storage quota was reached, so your compressed 400x400 avatar was saved directly to your profile.'
+          );
+          if (navigation?.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation?.navigate('ProfileScreen');
+          }
+          return;
+        } catch (fallbackErr) {
+          console.error('Fallback save failed:', fallbackErr);
+        }
+      }
+
+      Alert.alert(
+        'Upload Failed',
+        error?.code === 'storage/quota-exceeded'
+          ? 'Firebase Storage daily quota has been exceeded.'
+          : error?.message || 'Could not upload profile image.'
+      );
+    } finally {
       setUploading(false);
-      Alert.alert('Upload Failed', 'Could not upload the selected image.');
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.topHeader}>
-        <TouchableOpacity
-          onPress={() => navigation?.goBack()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backButtonText}>← Back to Profile</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Upload Picture</Text>
-        <View style={{ width: 60 }} />
-      </View>
-      <View style={styles.content}>
-        <Button title="Pick an image from gallery" color="#FF8C00" onPress={handlePickImage} />
-        {uploading && (
-          <ActivityIndicator size="large" color="#FF8C00" style={{ marginTop: 15 }} />
-        )}
-        {loading ? (
-          <ActivityIndicator size="large" color="#FF8C00" style={{ marginTop: 15 }} />
-        ) : (
-          mediaList.length > 0 && (
-            <View style={{ marginTop: 20 }}>
-              <FadingCarousel
-                images={mediaList.map((item) => item.downloadURL)}
-                duration={3000}
-              />
+      <View style={styles.card}>
+        <Text style={styles.title}>Update Profile Portrait</Text>
+        <Text style={styles.subtitle}>
+          Images are automatically optimized to 400×400 JPEG for fast loading.
+        </Text>
+
+        <TouchableOpacity style={styles.avatarPreviewBox} onPress={pickImage}>
+          {selectedUri ? (
+            <Image source={{ uri: selectedUri }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.placeholderCenter}>
+              <Feather name="camera" size={32} color="#D4F458" />
+              <Text style={styles.placeholderText}>Tap to choose photo</Text>
             </View>
-          )
+          )}
+        </TouchableOpacity>
+
+        {uploading && (
+          <View style={styles.progressRow}>
+            <ActivityIndicator size="small" color="#D4F458" />
+            <Text style={styles.progressText}>Uploading... {progress}%</Text>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[styles.primaryBtn, (!selectedUri || uploading) && styles.btnDisabled]}
+          onPress={handleUpload}
+          disabled={!selectedUri || uploading}
+        >
+          <Text style={styles.primaryBtnText}>
+            {uploading ? 'Saving Portrait...' : 'Save Profile Portrait'}
+          </Text>
+        </TouchableOpacity>
+
+        {navigation && (
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </TouchableOpacity>
         )}
       </View>
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0D0E12',
-  },
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#20242E',
-  },
-  backButton: {
-    backgroundColor: '#1A1D24',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  backButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
+    backgroundColor: '#0B0C10',
     justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
   },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#151821',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  title: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  subtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  avatarPreviewBox: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#0E1016',
+    borderWidth: 2,
+    borderColor: '#D4F458',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  placeholderCenter: {
+    alignItems: 'center',
+  },
+  placeholderText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 8,
+    fontWeight: '600',
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  progressText: {
+    color: '#D4F458',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  primaryBtn: {
+    width: '100%',
+    backgroundColor: '#D4F458',
+    paddingVertical: 14,
+    borderRadius: 20,
+    alignItems: 'center',
+  },
+  btnDisabled: {
+    opacity: 0.5,
+  },
+  primaryBtnText: {
+    color: '#0B0C10',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  cancelBtn: {
+    marginTop: 14,
+    paddingVertical: 8,
+  },
+  cancelBtnText: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '600',
+  },
 });
-
-export default UploadProfilePicture;

@@ -43,14 +43,13 @@ import MemoirSearchPage from './Memoir';
 import MemoirHistoryScreen from './MemoirHistoryScreen';
 import UploadProfilePicture from './UploadProfilePicture';
 import { LockProvider } from './LockContext';
-import BadgeAwarder from './BadgeAwarder';
 import ChatScreen from './ChatScreen';
 import MainChatScreen from './MainChatScreen';
 import TheCollective from './TheCollective';
 import Pickerchoosers from './Pickerchoosers';
 import AddSong from './AddSong';
 import { FeedbackForm, RateUsScreen, BugReportForm } from './Feedback';
-import SimilarityFinderWidget from './components/SimilarityFinderWidget';
+// import SimilarityFinderWidget from './future_features/SimilarityFinderWidget'; // Shelved into future_features
 
 const Stack = createStackNavigator();
 const navigationRef = createNavigationContainerRef();
@@ -152,6 +151,7 @@ export default function App() {
               <Stack.Screen name="MusicOfTheDay" component={MusicOfTheDayScreen} />
               <Stack.Screen name="Registration" component={RegistrationStack} />
               <Stack.Screen name="Profile" component={ProfileScreen} />
+              <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
               <Stack.Screen name="RankedUsers" component={RankedUsers} />
               <Stack.Screen name="UserGraph" component={UserGraph} />
               <Stack.Screen name="FriendsScreen" component={FriendsScreen} />
@@ -166,10 +166,10 @@ export default function App() {
               <Stack.Screen name="SecuritySettings" component={SecuritySettings} />
               <Stack.Screen name="NotificationSettings" component={NotificationSettings} />
               <Stack.Screen name="Algo" component={Algo} />
+              <Stack.Screen name="Memoir" component={MemoirSearchPage} />
               <Stack.Screen name="MemoirSearchPage" component={MemoirSearchPage} />
               <Stack.Screen name="MemoirHistoryScreen" component={MemoirHistoryScreen} />
               <Stack.Screen name="UploadProfilePicture" component={UploadProfilePicture} />
-              <Stack.Screen name="BadgeAwarder" component={BadgeAwarder} />
               <Stack.Screen name="ChatScreen" component={ChatScreen} />
               <Stack.Screen name="MainChatScreen" component={MainChatScreen} />
               <Stack.Screen name="TheCollective" component={TheCollective} />
@@ -178,7 +178,8 @@ export default function App() {
               <Stack.Screen name="Feedback" component={FeedbackForm} />
               <Stack.Screen name="Rate" component={RateUsScreen} />
               <Stack.Screen name="Bug" component={BugReportForm} />
-              <Stack.Screen name="SimilarityFinder" component={SimilarityFinderWidget} />
+              {/* Shelved into future_features */}
+              {/* <Stack.Screen name="SimilarityFinder" component={SimilarityFinderWidget} /> */}
             </Stack.Navigator>
           </NavigationContainer>
         </PaperProvider>

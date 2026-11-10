@@ -28,6 +28,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { doc, getDoc, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { db, auth } from './firebaseConfig';
 import { sendFriendRequest } from './HandlingFriends';
+import { computeSimilarityMatrix } from './utils/algorithmUtils';
 
 const WORLD_SIZE = 720;
 const CENTER = WORLD_SIZE / 2; // (360, 360)
@@ -44,9 +45,93 @@ const ORBIT_TIERS = [
 ];
 
 function UserGraph({ route, navigation }) {
-  const rawRankedUsers = route?.params?.rankedUsers || [];
+  const [rankedUsers, setRankedUsers] = useState(() => route?.params?.rankedUsers || []);
+  const [loadingRankedUsers, setLoadingRankedUsers] = useState(
+    () => !route?.params?.rankedUsers || route.params.rankedUsers.length === 0
+  );
   const routeUsernames = route?.params?.usernames || {};
   const userId = route?.params?.userId || auth.currentUser?.uid || 'current_user';
+
+  // Automatically fetch cached rankings or compute from playlists if navigated directly
+  useEffect(() => {
+    if (route?.params?.rankedUsers && route.params.rankedUsers.length > 0) {
+      setRankedUsers(route.params.rankedUsers);
+      setLoadingRankedUsers(false);
+      return;
+    }
+
+    let isMounted = true;
+    const loadRankings = async () => {
+      try {
+        setLoadingRankedUsers(true);
+        const currentUid = userId !== 'current_user' ? userId : auth.currentUser?.uid;
+
+        // 1. Try to read cached ranking document
+        if (currentUid) {
+          const rankSnap = await getDoc(doc(db, 'ranking', currentUid));
+          if (rankSnap.exists()) {
+            const data = rankSnap.data();
+            if (Array.isArray(data?.rankings) && data.rankings.length > 0) {
+              if (isMounted) {
+                setRankedUsers(data.rankings);
+                setLoadingRankedUsers(false);
+              }
+              return;
+            }
+          }
+        }
+
+        // 2. Fallback: fetch playlists and compute similarity matrix on the fly
+        const playlistsSnap = await getDocs(collection(db, 'playlists'));
+        const userPlaylists = [];
+        playlistsSnap.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (!d || !d.songs) return;
+          const songs = Array.isArray(d.songs) ? d.songs : Object.values(d.songs || {});
+          const valid = songs.filter((s) => s && s.trackId);
+          if (valid.length === 0) return;
+          userPlaylists.push({
+            username: docSnap.id,
+            trackIds: valid.map((s) => s.trackId),
+            artistIds: valid.map((s) => s.artistId),
+            primaryGenres: valid.map((s) => s.primaryGenreName),
+            releaseDates: valid.map((s) => s.releaseDate),
+          });
+        });
+
+        if (userPlaylists.length > 0) {
+          const matrix = computeSimilarityMatrix(userPlaylists, [0.5, 0.35, 0.075, 0.075]);
+          const currentIdx = userPlaylists.findIndex((p) => p.username === currentUid);
+          const baseIdx = currentIdx !== -1 ? currentIdx : 0;
+          const computed = userPlaylists
+            .map((up, idx) => ({
+              uid: up.username,
+              uname: up.username,
+              totalScore: Number(matrix[baseIdx][idx]) || 0,
+            }))
+            .sort((a, b) => b.totalScore - a.totalScore)
+            .slice(0, 50);
+
+          if (isMounted) {
+            setRankedUsers(computed);
+            setLoadingRankedUsers(false);
+          }
+          return;
+        }
+      } catch (err) {
+        console.error('Error auto-loading affinity graph nodes:', err);
+      } finally {
+        if (isMounted) {
+          setLoadingRankedUsers(false);
+        }
+      }
+    };
+
+    loadRankings();
+    return () => {
+      isMounted = false;
+    };
+  }, [route?.params?.rankedUsers, userId]);
 
   const [hydratedNames, setHydratedNames] = useState(routeUsernames);
   const [hydratedImages, setHydratedImages] = useState({});
@@ -70,7 +155,7 @@ function UserGraph({ route, navigation }) {
       const uids = {};
       const statuses = {};
 
-      for (const item of rawRankedUsers) {
+      for (const item of rankedUsers) {
         const key = item.uname || item.uid;
         if (!key) continue;
 
@@ -127,14 +212,14 @@ function UserGraph({ route, navigation }) {
     return () => {
       isMounted = false;
     };
-  }, [rawRankedUsers]);
+  }, [rankedUsers]);
 
   const currentUserDisplay =
     hydratedNames[userId] || routeUsernames[userId] || 'You';
 
   // Filter out the current user from peripheral nodes so "You" only sits at the center
   const peerUsers = useMemo(() => {
-    return rawRankedUsers.filter((u) => {
+    return rankedUsers.filter((u) => {
       const key = u.uname || u.uid;
       if (!key) return false;
       if (key === userId || key === 'current_user') return false;
@@ -147,7 +232,7 @@ function UserGraph({ route, navigation }) {
       }
       return true;
     });
-  }, [rawRankedUsers, userId, hydratedUids, hydratedNames, currentUserDisplay]);
+  }, [rankedUsers, userId, hydratedUids, hydratedNames, currentUserDisplay]);
 
   // Compute deterministic radial coordinates with collision-free angular distribution
   const plottedNodes = useMemo(() => {
@@ -354,7 +439,17 @@ function UserGraph({ route, navigation }) {
     }
   };
 
-  if (!rawRankedUsers || rawRankedUsers.length === 0) {
+  if (loadingRankedUsers) {
+    return (
+      <SafeAreaView style={styles.emptyContainer}>
+        <ActivityIndicator size="large" color="#FF8C00" style={{ marginBottom: 14 }} />
+        <Text style={styles.emptyTitle}>Music Affinity Radar</Text>
+        <Text style={styles.emptySubtext}>Computing your community constellation...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!rankedUsers || rankedUsers.length === 0) {
     return (
       <SafeAreaView style={styles.emptyContainer}>
         <FontAwesome5 name="satellite" size={40} color="#FF8C00" style={{ marginBottom: 14 }} />
@@ -387,7 +482,7 @@ function UserGraph({ route, navigation }) {
       <View style={styles.topHeader}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.topBackBtn}>
           <FontAwesome5 name="arrow-left" size={14} color="#FFFFFF" />
-          <Text style={styles.topBackText}>Leaderboard</Text>
+          <Text style={styles.topBackText}>Back</Text>
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>

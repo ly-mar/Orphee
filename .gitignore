@@ -23,6 +23,8 @@ web-build/
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+firebase-debug.log*
+repomix-output.txt
 
 # macOS
 .DS_Store

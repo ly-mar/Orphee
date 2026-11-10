@@ -1,5 +1,5 @@
-// utils/similarityEngine.js
-import catalogArtifact from '../ml_service/artifacts/catalog_embeddings.json';
+// future_features/similarityEngine.js
+import catalogArtifact from './ml_service/artifacts/catalog_embeddings.json';
 
 export const ML_SERVICE_URL = 'http://localhost:8000';
 export const EXPECTED_AUDIO_DIM = 68;

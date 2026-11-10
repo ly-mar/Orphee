@@ -65,7 +65,8 @@ function HomeScreen({ navigation }) {
                   </Button>
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity
+              {/* Shelved: AI Similarity Finder & Calculator Card (see future_features/) */}
+              {/* <TouchableOpacity
                 style={styles.card}
                 activeOpacity={0.88}
                 onPress={() => navigation.navigate('SimilarityFinder')}
@@ -86,7 +87,7 @@ function HomeScreen({ navigation }) {
                     Launch Similarity Finder
                   </Button>
                 </View>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
               {/* Community Charts Card */}
               {/* <TouchableOpacity
                 style={styles.card}

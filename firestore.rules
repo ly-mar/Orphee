@@ -38,9 +38,16 @@ service cloud.firestore {
     }
 
     // Memoirs: Private to the owner (readable by authenticated peers on profile view)
-    match /memoirs/{userId} {
+    match /memoirs/{memoirId} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.auth.uid == memoirId
+      );
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        request.auth.uid == memoirId
+      );
     }
 
     // Daily rhythm logs: Public read; authenticated write
