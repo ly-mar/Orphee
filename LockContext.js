@@ -2,6 +2,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { auth } from './firebaseConfig';
+import { onAuthStateChanged } from 'firebase/auth';
 
 const LockContext = createContext({
   isLocked: false,
@@ -27,6 +29,17 @@ export const LockProvider = ({ children }) => {
       console.error('Error clearing lock state:', error);
     }
   }, []);
+
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        setIsLocked(false);
+        setLockTime(0);
+        clearStoredLock();
+      }
+    });
+    return () => unsubscribeAuth();
+  }, [clearStoredLock]);
 
   const syncLockState = useCallback(async () => {
     try {

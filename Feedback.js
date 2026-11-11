@@ -1,10 +1,12 @@
-import React from 'react';
-import { SafeAreaView, ScrollView, View, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import React, { useRef } from 'react';
+import { SafeAreaView, ScrollView, View, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Button, Text, RadioButton } from 'react-native-paper';
 import { AntDesign } from '@expo/vector-icons';
 import Checkbox from 'expo-checkbox';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
 import { db, app } from './firebaseConfig'; // Assuming firebase is configured in this file
+import { createAsyncActionLock } from './utils/actionLockUtils';
+import { validateFeedbackPayload } from './utils/userAndFeedbackUtils';
 
 
 // Feedback Form Screen
@@ -20,31 +22,43 @@ const FeedbackForm = ({ navigation }) => {
     const [email, setEmail] = React.useState('');
     const [feedbackType, setFeedbackType] = React.useState('comments');
     const [generalFeedback, setGeneralFeedback] = React.useState('');
+    const actionLockRef = useRef(createAsyncActionLock());
 
-    const handleSubmit = async () => {
-      // Handle feedback form submission logic here
-      const feedbackData = {
-        usageFrequency,
-        motivation,
-        mostUsedFeature,
-        improvementSuggestion,
-        followUp,
-        name,
-        phone,
-        age,
-        email,
-        feedbackType,
-        generalFeedback,
-      };
-      try {
-        await addDoc(collection(db, 'feedbacks'), feedbackData);
-        console.log('Feedback submitted successfully');
-        navigation.goBack();
-      } catch (error) {
-        console.error('Error submitting feedback:', error);
-        // Optionally show an error message to the user here
+    const handleSubmit = () => {
+      const combinedFeedback = [generalFeedback, improvementSuggestion, motivation]
+        .filter(Boolean)
+        .join('\n');
+      const validation = validateFeedbackPayload(combinedFeedback || generalFeedback || improvementSuggestion);
+
+      if (!validation.ok) {
+        Alert.alert('Feedback Required', validation.error);
+        return;
       }
-      navigation.goBack();
+
+      return actionLockRef.current(async () => {
+        const feedbackData = {
+          usageFrequency: String(usageFrequency || '').slice(0, 200),
+          motivation: String(motivation || '').slice(0, 500),
+          mostUsedFeature: String(mostUsedFeature || '').slice(0, 200),
+          improvementSuggestion: String(improvementSuggestion || '').slice(0, 1000),
+          followUp: Boolean(followUp),
+          name: String(name || '').trim().slice(0, 100),
+          phone: String(phone || '').trim().slice(0, 30),
+          age: String(age || '').trim().slice(0, 10),
+          email: String(email || '').trim().toLowerCase().slice(0, 100),
+          feedbackType,
+          generalFeedback: validation.text,
+          createdAt: new Date().toISOString(),
+        };
+        try {
+          await addDoc(collection(db, 'feedbacks'), feedbackData);
+          Alert.alert('Thank You!', 'Your feedback has been submitted successfully.');
+          navigation.goBack();
+        } catch (error) {
+          console.error('Error submitting feedback:', error);
+          Alert.alert('Error', 'Could not submit feedback. Please try again.');
+        }
+      });
     };
       
     

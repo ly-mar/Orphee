@@ -22,6 +22,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { normalizeTrack, getHighResImage } from './services/musicApi';
 import { aggregateCommunity13Charts } from './utils/chartUtils';
+import { normalizeYour13List } from './utils/playlistUtils';
 import Taskbar from './Taskbar';
 import backgroundImage from './assets/gabriel-bassino-zEawlLdVloo-unsplash.jpg';
 
@@ -242,9 +243,7 @@ const RankedMusicList = ({ navigation }) => {
           const rawSongs = Array.isArray(docData.songs)
             ? docData.songs
             : Object.values(docData.songs || {});
-          const validSongs = rawSongs
-            .filter((s) => s && (s.trackName || s.title) && (s.artistName || s.artist))
-            .slice(0, 13);
+          const validSongs = normalizeYour13List(rawSongs);
 
           if (validSongs.length > 0) {
             userIdsSeen.add(docSnap.id);
@@ -268,9 +267,7 @@ const RankedMusicList = ({ navigation }) => {
             const rawSongs = Array.isArray(data?.songs)
               ? data.songs
               : Object.values(data?.songs || {});
-            const validSongs = rawSongs
-              .filter((s) => s && (s.trackName || s.title) && (s.artistName || s.artist))
-              .slice(0, 13);
+            const validSongs = normalizeYour13List(rawSongs);
             if (validSongs.length > 0) {
               userIdsSeen.add(currentUid);
               userPlaylists.push({

@@ -5,6 +5,7 @@ import { auth, db } from './firebaseConfig';  // Import the firestore database
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import Taskbar from './Taskbar'; // Import Taskbar component
+import { filterUsersSafely } from './utils/userAndFeedbackUtils';
 
 const windowWidth = Dimensions.get('window').width;
 const windowHeight = Dimensions.get('window').height;
@@ -52,15 +53,18 @@ const UserSearchScreen = () => {
       const q = query(usersCollection, where('username', '>=', searchQuery), where('username', '<=', searchQuery + '\uf8ff'));
       const querySnapshot = await getDocs(q);
 
-      const users = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        username: doc.data().username,
-        email: doc.data().email,
-        profileImageUrl: doc.data().profileImageUrl || 'https://via.placeholder.com/150', // Default image if not provided
+      const users = querySnapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        uid: docSnap.id,
+        username: docSnap.data().username || '',
+        displayName: docSnap.data().displayName || docSnap.data().name || '',
+        email: docSnap.data().email || '',
+        profileImageUrl: docSnap.data().profileImageUrl || 'https://via.placeholder.com/150', // Default image if not provided
       }));
 
-      setResults(users);
-      setCache({ ...cache, [searchQuery]: users });
+      const filteredUsers = filterUsersSafely(users, searchQuery, auth.currentUser?.uid);
+      setResults(filteredUsers);
+      setCache({ ...cache, [searchQuery]: filteredUsers });
       setIsLoading(false);
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -94,7 +98,7 @@ const UserSearchScreen = () => {
     >
       <Image source={{ uri: item.profileImageUrl }} style={styles.profileImage} />
       <View style={styles.textContainer}>
-        <Text style={styles.username}>{item.username}</Text>
+        <Text style={styles.username}>{item.username || 'TuneHub Member'}</Text>
       </View>
     </TouchableOpacity>
   );

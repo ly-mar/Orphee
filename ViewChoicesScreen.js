@@ -15,9 +15,10 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { db, auth } from './firebaseConfig';
 import { useLock } from './LockContext';
+import { normalizeYour13List } from './utils/playlistUtils';
 
 function ViewChoicesScreen({ route, navigation }) {
-  const initialChoices = route?.params?.selectedChoices || [];
+  const initialChoices = normalizeYour13List(route?.params?.selectedChoices || []);
   const parentRemoveChoice = route?.params?.removeChoice;
   const routeUserId = route?.params?.userId;
 
@@ -26,7 +27,7 @@ function ViewChoicesScreen({ route, navigation }) {
   const { isLocked, lockTime } = useLock();
 
   useEffect(() => {
-    setChoices(initialChoices);
+    setChoices(normalizeYour13List(initialChoices));
   }, [initialChoices]);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ function ViewChoicesScreen({ route, navigation }) {
         try {
           const snap = await getDoc(doc(db, 'playlists', activeUid));
           if (snap.exists() && Array.isArray(snap.data().songs)) {
-            setChoices(snap.data().songs);
+            setChoices(normalizeYour13List(snap.data().songs));
           }
         } catch (err) {
           console.error('Error loading choices in ViewChoicesScreen:', err);

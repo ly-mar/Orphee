@@ -1,5 +1,5 @@
 // SecuritySettings.js
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -22,6 +22,8 @@ import {
 import { doc, deleteDoc, setDoc } from 'firebase/firestore';
 import { ref, listAll, deleteObject } from 'firebase/storage';
 import { auth, db, storage } from './firebaseConfig';
+import { createAsyncActionLock } from './utils/actionLockUtils';
+import { deleteUserAccountSafely, mapFirebaseAuthError } from './utils/authUtils';
 
 const SecuritySettings = ({ navigation }) => {
   const [isPasswordModalVisible, setPasswordModalVisible] = useState(false);
@@ -30,6 +32,7 @@ const SecuritySettings = ({ navigation }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const actionLockRef = useRef(createAsyncActionLock());
 
   const [profileVisibility, setProfileVisibility] = useState('Public');
   const [postVisibility, setPostVisibility] = useState('Public');
@@ -46,7 +49,7 @@ const SecuritySettings = ({ navigation }) => {
     }
   };
 
-  const handlePasswordChange = async () => {
+  const handlePasswordChange = () => {
     const user = auth.currentUser;
     if (!user || !user.email) {
       Alert.alert('Error', 'No authenticated user session found.');
@@ -65,22 +68,24 @@ const SecuritySettings = ({ navigation }) => {
       return;
     }
 
-    try {
-      setUpdatingPassword(true);
-      const credential = EmailAuthProvider.credential(user.email, oldPassword);
-      await reauthenticateWithCredential(user, credential);
-      await updatePassword(user, newPassword);
+    return actionLockRef.current(async () => {
+      try {
+        setUpdatingPassword(true);
+        const credential = EmailAuthProvider.credential(user.email, oldPassword);
+        await reauthenticateWithCredential(user, credential);
+        await updatePassword(user, newPassword);
 
-      setPasswordModalVisible(false);
-      setOldPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      Alert.alert('Success', 'Your password has been updated.');
-    } catch (error) {
-      Alert.alert('Password Update Failed', error.message || 'Check your current password.');
-    } finally {
-      setUpdatingPassword(false);
-    }
+        setPasswordModalVisible(false);
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        Alert.alert('Success', 'Your password has been updated.');
+      } catch (error) {
+        Alert.alert('Password Update Failed', mapFirebaseAuthError(error));
+      } finally {
+        setUpdatingPassword(false);
+      }
+    });
   };
 
   const confirmDeleteAccount = () => {
@@ -98,47 +103,55 @@ const SecuritySettings = ({ navigation }) => {
     );
   };
 
-  const executeAccountDeletion = async () => {
+  const executeAccountDeletion = () => {
     const user = auth.currentUser;
     if (!user) return;
-    const uid = user.uid;
 
-    try {
-      setDeletingAccount(true);
-
-      // 1. Delete user documents across Firestore collections
-      await Promise.allSettled([
-        deleteDoc(doc(db, 'users', uid)),
-        deleteDoc(doc(db, 'playlists', uid)),
-        deleteDoc(doc(db, 'memoirs', uid)),
-        deleteDoc(doc(db, 'ranking', uid)),
-        deleteDoc(doc(db, 'requests', uid)),
-      ]);
-
-      // 2. Delete profile images folder in Firebase Storage
+    return actionLockRef.current(async () => {
       try {
-        const folderRef = ref(storage, `profileImages/${uid}`);
-        const fileList = await listAll(folderRef);
-        await Promise.allSettled(
-          fileList.items.map((itemRef) => deleteObject(itemRef))
-        );
-      } catch (_) { }
+        setDeletingAccount(true);
 
-      // 3. Delete Firebase Auth user record
-      await deleteUser(user);
+        const purgeFirestoreData = async (uid) => {
+          await Promise.allSettled([
+            deleteDoc(doc(db, 'users', uid)),
+            deleteDoc(doc(db, 'playlists', uid)),
+            deleteDoc(doc(db, 'memoirs', uid)),
+            deleteDoc(doc(db, 'ranking', uid)),
+            deleteDoc(doc(db, 'requests', uid)),
+          ]);
 
-      setDeletingAccount(false);
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Welcome' }],
-      });
-    } catch (error) {
-      setDeletingAccount(false);
-      Alert.alert(
-        'Re-Authentication Required',
-        'For security, please sign out and sign back in right before deleting your account.'
-      );
-    }
+          try {
+            const folderRef = ref(storage, `profileImages/${uid}`);
+            const fileList = await listAll(folderRef);
+            await Promise.allSettled(
+              fileList.items.map((itemRef) => deleteObject(itemRef))
+            );
+          } catch (_) { }
+        };
+
+        const result = await deleteUserAccountSafely({
+          user,
+          purgeFirestoreData,
+          deleteAuthUser: (u) => deleteUser(u),
+        });
+
+        if (result.ok) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Welcome' }],
+          });
+        } else {
+          Alert.alert(
+            result.requiresReauth ? 'Re-Authentication Required' : 'Account Deletion Failed',
+            result.message
+          );
+        }
+      } catch (error) {
+        Alert.alert('Account Deletion Failed', mapFirebaseAuthError(error));
+      } finally {
+        setDeletingAccount(false);
+      }
+    });
   };
 
   return (

@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet, Text, Alert, Platform, ActivityIndicator } from 'react-native';
 import { signUpUser } from './auth-api';
 import LottieView from 'lottie-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { createAsyncActionLock } from './utils/actionLockUtils';
+import { sanitizeAuthCredentials } from './utils/authUtils';
 
 const SignUpScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -10,27 +12,31 @@ const SignUpScreen = ({ navigation }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
+  const actionLockRef = useRef(createAsyncActionLock());
 
-  const handleSignUp = async () => {
-    if (!email || !password || !username || !confirmPassword) {
+  const handleSignUp = () => {
+    const creds = sanitizeAuthCredentials({ email, password, username });
+    if (!creds.email || !creds.password || !creds.username || !confirmPassword) {
       Alert.alert('Error', 'Please enter all fields.');
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (creds.password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match.');
       return;
     }
 
-    setLoading(true);
-    const result = await signUpUser(email, password, username);
-    setLoading(false);
+    return actionLockRef.current(async () => {
+      setLoading(true);
+      const result = await signUpUser(creds.email, creds.password, creds.username);
+      setLoading(false);
 
-    if (result.error) {
-      Alert.alert('Error', result.error);
-    } else {
-      navigation.navigate('Home');
-    }
+      if (result.error) {
+        Alert.alert('Error', result.error);
+      } else {
+        navigation.navigate('Home');
+      }
+    });
   };
 
   return (

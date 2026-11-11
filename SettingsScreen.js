@@ -1,5 +1,5 @@
 // SettingsScreen.js
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -15,6 +15,8 @@ import { List, Divider, Button } from 'react-native-paper';
 import { signOut } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { createAsyncActionLock } from './utils/actionLockUtils';
+import { mapFirebaseAuthError } from './utils/authUtils';
 
 export const PRIVACY_POLICY_URL = 'https://tunehub-86837.web.app/privacy';
 export const TERMS_OF_SERVICE_URL = 'https://tunehub-86837.web.app/terms';
@@ -48,17 +50,20 @@ All 30-second audio previews, album artwork, and track metadata displayed within
 const SettingsScreen = ({ route, navigation }) => {
   const userId = route?.params?.userId ?? auth.currentUser?.uid;
   const [legalModalType, setLegalModalType] = useState(null); // 'privacy' | 'terms' | null
+  const actionLockRef = useRef(createAsyncActionLock());
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Welcome' }],
-      });
-    } catch (error) {
-      Alert.alert('Error', error.message);
-    }
+  const handleLogout = () => {
+    return actionLockRef.current(async () => {
+      try {
+        await signOut(auth);
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Welcome' }],
+        });
+      } catch (error) {
+        Alert.alert('Error', mapFirebaseAuthError(error));
+      }
+    });
   };
 
   const openExternalLegalLink = async (type) => {

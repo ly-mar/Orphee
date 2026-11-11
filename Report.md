@@ -1,296 +1,404 @@
-A & B. Hostile Beta Test & New Bug Log (Re-Walking Adjacent Screens & Journeys)Fixes in 90b7be0 hardened Memoir.js, UserGraph.js, GraphVisualization.js, SongDetailsScreen.js, Your13.js, ChatScreen.js, MainChatScreen.js, UploadProfilePicture.js, and ProfileScreen.js. However, re-walking the adjacent screens in the same user journeys reveals 5 unpatched sibling files where the exact same failure modes remain exposed (confirmed by unchanged archive headers in Orphee-90b7be018f3b37264357df7893b809893469f17e):   BUG-007 (P1) — MemoirHistoryScreen.js Read Path Desync After Memoir.js Dual-Write FallbackArea: MemoirHistoryScreen.js (Journey J6 — Daily Music Memoirs)   Repro Steps:Log in as a user when production Firestore rules reject root addDoc(collection(db, 'memoirs')) writes.Submit a memoir in Memoir.js; the 90b7be0 dual-write fallback saves the entry into doc(db, 'memoirs', uid).   Navigate to MemoirHistoryScreen.js.   Expected: MemoirHistoryScreen.js reads from doc(db, 'memoirs', uid) (and/or merges any accessible root query results) so the user's saved memoirs display properly without throwing PERMISSION_DENIED.   Actual: MemoirHistoryScreen.js was not modified in 90b7be0—its archive entry is byte-identical to 1dc9614. If it only queries collection(db, 'memoirs') with where('userId', '==', uid) or expects root documents rather than the per-user memoirs/{uid} fallback structure, either the query fails with PERMISSION_DENIED or newly saved fallback memoirs never appear in the user's history.   Evidence: MemoirHistoryScreen.js unchanged between 1dc9614 and 90b7be0 while Memoir.js schema write path was updated.   Label: SUSPECTEDBUG-008 (P1) — Unreleased expo-av Audio & Rapid-Tap Overlap in AddSong.js and Memoir.jsArea: AddSong.js, Memoir.js (Journey J3 & J6 — Track Search & Audio Previews)   Repro Steps:Open AddSong.js (or song preview in Memoir.js) and search for tracks via the iTunes Search API.   Rapidly tap preview on multiple search results, or start a 30s preview in AddSong.js and immediately navigate to SongDetailsScreen.js or press Back.   Expected: AddSong.js and Memoir.js use audioPreviewController.js so previews are serialized, null previewUrl values are guarded, and audio stops on screen blur/unmount.   Actual: Commit 90b7be0 wired audioPreviewController.js into SongDetailsScreen.js and Your13.js, but AddSong.js is byte-identical to 1dc9614. Any direct Audio.Sound.createAsync calls in AddSong.js or Memoir.js still leak sound instances on unmount and overlap with Your13.js / SongDetailsScreen.js playback.   Evidence: AddSong.js unchanged in 90b7be0; commit summary confirms audioPreviewController.js was only connected to SongDetailsScreen.js and Your13.js.   Label: SUSPECTEDBUG-009 (P1) — Unprotected onSnapshot Listeners in HandlingFriends.js, FriendsScreen.js, and NotifPage.jsArea: HandlingFriends.js, FriendsScreen.js, NotifPage.js (Journey J7 & J8 — Friend Requests & Notifications)   Repro Steps:Rapidly switch tabs/screens between FriendsScreen.js, HandlingFriends.js, and NotifPage.js, or log out while viewing incoming friend requests (requests/{uid}).   Expected: All real-time relationship and notification listeners use subscribeSafeSnapshot from firestoreListenerUtils.js to guarantee synchronous teardown and suppress post-logout permission-denied crashes.   Actual: Commit 90b7be0 wired firestoreListenerUtils.js into ChatScreen.js and MainChatScreen.js, but HandlingFriends.js, FriendsScreen.js, and NotifPage.js were untouched (1dc9614 == 90b7be0), leaving requests/{uid} and friend list listeners vulnerable to leaks and unmounted state updates.   Evidence: HandlingFriends.js, FriendsScreen.js, and NotifPage.js unchanged in 90b7be0; Context explicitly flags requests/{uid} listeners as a known leak vector.   Label: SUSPECTEDBUG-010 (P1) — Algo.js & RankedUsers.js Division-by-Zero / Sparse Ranking Crash on "Sonic Twins"Area: Algo.js, RankedUsers.js (Journey J4 — Sonic Twins Leaderboard)   Repro Steps:Log in as a user with an empty or 1-song Your13 list, or when candidate users in Firestore have your13: [], null, or malformed track objects without trackId/artistName.Open RankedUsers.js ("Sonic Twins" leaderboard).   Expected: Algo.js returns 0 compatibility for empty/malformed track lists, and RankedUsers.js formats percentages without rendering "NaN%" or crashing CustomProgressBar.js with progress={NaN}.   Actual: While UserGraph.js was hardened in 90b7be0, Algo.js, RankedUsers.js, and CustomProgressBar.js remain untouched (1dc9614 == 90b7be0). If Algo.js divides by userSongs.length === 0 or maxPossibleScore === 0, RankedUsers.js receives NaN compatibility scores and passes NaN width/progress to CustomProgressBar.js.   Evidence: Algo.js, RankedUsers.js, and CustomProgressBar.js unchanged in 90b7be0.   Label: SUSPECTEDBUG-011 (P2) — Rapid Double-Tap Duplicate Vote / Submission Race in TheCollective.js, ThemeDetails.js & UpdateProfileScreen.jsArea: TheCollective.js, ThemeDetails.js, UpdateProfileScreen.js (Journey J5 & J8 — Community Shelves & Profile Update)   Repro Steps:Open TheCollective.js or ThemeDetails.js on a slow 3G connection and rapidly tap the Vote / Submit button 5 times.   Or open UpdateProfileScreen.js and rapidly tap Save Profile while also updating an avatar.   Expected: An in-flight async lock (isSubmitting ref/state) blocks concurrent Firestore writes until the active request settles, and UpdateProfileScreen.js uses utils/avatarUtils.js if it touches avatar fields.   Actual: TheCollective.js, ThemeDetails.js, and UpdateProfileScreen.js were untouched in 90b7be0; without synchronous ref-based locks (submittingRef.current), rapid taps before React re-renders state can dispatch duplicate vote increments or overlapping profile writes.   Evidence: TheCollective.js, ThemeDetails.js, and UpdateProfileScreen.js unchanged in 90b7be0.   Label: SUSPECTEDC & D. Characterization Tests & Minimal Fixes (5 Bugs: BUG-007 through BUG-011)Fix 1: BUG-007 (P1) — MemoirHistoryScreen.js Dual-Source Read & Normalization (MemoirHistoryScreen.js)1. Characterization & Regression Test (__tests__/memoirResilience.test.js):   JavaScript// Append to __tests__/memoirResilience.test.js
-import { loadUserMemoirHistory } from '../MemoirHistoryScreen';
+A & B. Hostile Beta Test & New Bug Log (Attacking Auth, Account Deletion, Lock State, Search & External Network Calls)Commits 90b7be0 and 7f8b922 hardened J3 (Your13.js, SongDetailsScreen.js, AddSong.js, Pickerchoosers.js), J4 (UserGraph.js, GraphVisualization.js, Algo.js, RankedUsers.js), J5 (TheCollective.js, ThemeDetails.js), J6 (Memoir.js, MemoirHistoryScreen.js), J7 (ChatScreen.js, MainChatScreen.js, FriendsScreen.js, HandlingFriends.js), and parts of J8 (ProfileScreen.js, UpdateProfileScreen.js, UploadProfilePicture.js, NotifPage.js).   Now we attack the remaining unpatched screens in J1, J2, J3, J7, and J8:BUG-012 (P0) — App Store Guideline 5.1.1(v) Blocker & Unhandled auth/requires-recent-login on Account Deletion / Security UpdatesArea: SettingsScreen.js, SecuritySettings.js (Journey J2 — Logout, Password/Email Update & Account Deletion)   Repro Steps:Log in and keep the session active for >5 minutes (or restore a persisted session on launch).Navigate to SettingsScreen.js or SecuritySettings.js and attempt to change password/email or delete the user account (deleteUser(auth.currentUser)).   Expected:Account deletion cleans up or anonymizes user Firestore documents (users/{uid}, memoirs/{uid}, requests/{uid}) before deleting the Firebase Auth record (or gracefully handles auth/requires-recent-login by prompting re-authentication rather than crashing or leaving half-deleted orphan state).Double-tapping Logout or Delete Account is guarded by createAsyncActionLock.Actual: SettingsScreen.js and SecuritySettings.js remain untouched since baseline 1dc9614. Calling Firebase deleteUser, updatePassword, or updateEmail on a stale token throws FirebaseError: Firebase: Error (auth/requires-recent-login). Furthermore, if deleteUser is called before Firestore cleanup, request.auth becomes null immediately and all subsequent Firestore cleanup writes fail with PERMISSION_DENIED.   Evidence: SettingsScreen.js and SecuritySettings.js untouched in 90b7be0 and 7f8b922.   Label: SUSPECTEDBUG-013 (P1) — Auth Input Trimming, Rapid-Tap Submission Race & Raw Firebase Error Exposure in LoginScreen.js & SignUpScreen.jsArea: LoginScreen.js, SignUpScreen.js (Journey J2 — Authentication)   Repro Steps:Open LoginScreen.js or SignUpScreen.js on iOS/Android where the keyboard auto-appends a trailing space to the email address (e.g., "user@tunehub.com ") or enters uppercase characters.   Rapidly double-tap "Sign Up" or "Log In" on a slow connection, or enter an empty/short password.Expected: Email is normalized (email.trim().toLowerCase()), username/display name is trimmed and length-bounded, concurrent taps are blocked via createAsyncActionLock, and Firebase Auth error codes (auth/invalid-email, auth/email-already-in-use, auth/wrong-password, auth/invalid-credential, auth/too-many-requests, auth/network-request-failed) map to clean user-facing messages.Actual: LoginScreen.js and SignUpScreen.js are unchanged since 1dc9614. Trailing keyboard whitespace causes spurious auth/invalid-email rejections, and rapid double-taps on SignUpScreen.js can race createUserWithEmailAndPassword against the subsequent setDoc(doc(db, 'users', uid)) initialization.   Evidence: LoginScreen.js and SignUpScreen.js untouched in 90b7be0 and 7f8b922.   Label: SUSPECTEDBUG-014 (P1) — iTunes Search API Network Timeout, AbortController Race & Special-Character Query EncodingArea: AddSong.js, Memoir.js, TheCollective.js (Journey J3, J5, J6 — Catalog Search)   Repro Steps:In AddSong.js (or Memoir.js), type a search query containing accents, emojis, &, #, or % (e.g., "Beyoncé & Jay-Z", "100% Pure"), or type rapidly "da" -> "daft" -> "daft punk" on a high-latency network.   Or disconnect network mid-search or receive an HTTP 403/503 or malformed JSON payload from [https://itunes.apple.com/search](https://itunes.apple.com/search).Expected: Query terms are encoded with encodeURIComponent(term.trim()), out-of-order stale responses are discarded via request sequence tokens or AbortController, res.ok is verified before res.json(), and missing fields (trackId, trackName, artistName, artworkUrl100) are defaulted safely.Actual: Unencoded & or # in template strings (?term=${query}&entity=song) truncates the URL query parameter; slow responses for earlier keystrokes overwrite newer search results; non-200 HTML error pages from iTunes crash response.json() with SyntaxError: Unexpected token <.Evidence: AddSong.js and Memoir.js iTunes fetch logic.   Label: SUSPECTEDBUG-015 (P1) — Unprotected onSnapshot / Stale Lock State Across Account Switch in HomeScreen.js, LockContext.js, ViewChoicesScreen.js & RankedMusicList.jsArea: HomeScreen.js, LockContext.js, ViewChoicesScreen.js, RankedMusicList.js (Journey J1 & J3 — Home Hub & Feature Lock State)   Repro Steps:Log in as User A who has completed all 13 tracks in Your13.js (isLocked === false in LockContext.js).   Log out and immediately log in as a brand-new User B (0 tracks), or navigate between HomeScreen.js, ViewChoicesScreen.js, and RankedMusicList.js with fewer than 13 tracks.   Expected: LockContext.js resets lock state immediately when auth.currentUser?.uid changes or becomes null, any Firestore listeners in HomeScreen.js / LockContext.js / ViewChoicesScreen.js / RankedMusicList.js are wrapped in subscribeSafeSnapshot, and RankedMusicList.js handles null/sparse your13 arrays without crashing on .map or index access.   Actual: HomeScreen.js, LockContext.js, ViewChoicesScreen.js, and RankedMusicList.js are untouched since 1dc9614. If LockContext.js caches unlock state in React state without keying on uid or cleaning up its snapshot listener on auth state change, User B inherits User A's lock state or triggers a permission-denied snapshot error on logout.   Evidence: HomeScreen.js, LockContext.js, ViewChoicesScreen.js, and RankedMusicList.js untouched in 90b7be0 and 7f8b922.   Label: SUSPECTEDBUG-016 (P2) — Null-Field Crash in UserSearchScreen.js & Unbounded/Double-Tap Submission in Feedback.jsArea: UserSearchScreen.js, Feedback.js (Journey J7 & J8 — User Search & Feedback Submission)   Repro Steps:Open UserSearchScreen.js and type a query when Firestore contains partially-registered user documents where username, displayName, or bio is null or undefined.   Open Feedback.js, enter whitespace-only text ("   ") or a 50,000-character paste, and rapidly tap Submit multiple times.   Expected: UserSearchScreen.js safely normalizes user fields ((user?.username ?? '').toLowerCase()) and excludes the current user's own UID if appropriate; Feedback.js rejects empty/whitespace-only input, truncates/bounds excessive payloads, and uses createAsyncActionLock to prevent duplicate Firestore writes.   Actual: UserSearchScreen.js and Feedback.js are untouched since 1dc9614. Calling .toLowerCase() or .includes() on an undefined user.username in UserSearchScreen.js throws TypeError: Cannot read properties of undefined (reading 'toLowerCase').   Evidence: UserSearchScreen.js and Feedback.js untouched in 90b7be0 and 7f8b922.   Label: SUSPECTEDC & D. Characterization Tests & Minimal Fixes (5 Bugs: BUG-012 through BUG-016)Fix 1: BUG-012 (P0) — Safe Account Deletion Order & Re-Auth Error Handling (SettingsScreen.js & SecuritySettings.js)1. Characterization & Regression Test (__tests__/authAndAccountSafety.test.js):JavaScript// __tests__/authAndAccountSafety.test.js
+import {
+  deleteUserAccountSafely,
+  mapFirebaseAuthError,
+  sanitizeAuthCredentials,
+} from '../utils/authUtils';
 
-describe('MemoirHistoryScreen Dual-Read Resilience [BUG-007]', () => {
-  test('merges per-user doc(db, "memoirs", uid) fallback entries when root collection query fails with permission-denied', async () => {
-    const permError = Object.assign(new Error('Permission denied'), { code: 'permission-denied' });
-    const fetchUserDoc = jest.fn().mockResolvedValue({
-      exists: () => true,
-      id: 'user-123',
-      data: () => ({
-        entries: [
-          { id: 'm1', trackName: 'Nights', artistName: 'Frank Ocean', note: 'Late night', createdAt: 1700000200000 },
-        ],
-      }),
+describe('Account Deletion & Security Settings Safety [BUG-012]', () => {
+  test('deletes user Firestore data BEFORE deleting Firebase Auth user while auth token is still valid', async () => {
+    const callOrder = [];
+    const purgeFirestoreData = jest.fn(async (uid) => {
+      callOrder.push(`firestore:${uid}`);
     });
-    const fetchRootCollection = jest.fn().mockRejectedValue(permError);
-
-    const history = await loadUserMemoirHistory({
-      uid: 'user-123',
-      fetchUserDoc,
-      fetchRootCollection,
+    const deleteAuthUser = jest.fn(async () => {
+      callOrder.push('auth:delete');
     });
 
-    expect(history).toHaveLength(1);
-    expect(history[0].trackName).toBe('Nights');
+    const result = await deleteUserAccountSafely({
+      user: { uid: 'user-99' },
+      purgeFirestoreData,
+      deleteAuthUser,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(callOrder).toEqual(['firestore:user-99', 'auth:delete']);
   });
 
-  test('deduplicates entries present in both doc(db, "memoirs", uid) and root collection', async () => {
-    const sharedEntry = { id: 'm1', trackId: '999', trackName: 'Nights', createdAt: 1700000200000 };
-    const fetchUserDoc = jest.fn().mockResolvedValue({
-      exists: () => true,
-      id: 'user-123',
-      data: () => ({ entries: [sharedEntry] }),
+  test('catches auth/requires-recent-login without crashing and returns actionable re-auth prompt', async () => {
+    const recentLoginErr = Object.assign(new Error('Requires recent login'), {
+      code: 'auth/requires-recent-login',
     });
-    const fetchRootCollection = jest.fn().mockResolvedValue([sharedEntry]);
-
-    const history = await loadUserMemoirHistory({
-      uid: 'user-123',
-      fetchUserDoc,
-      fetchRootCollection,
+    const result = await deleteUserAccountSafely({
+      user: { uid: 'user-99' },
+      purgeFirestoreData: jest.fn().mockResolvedValue(undefined),
+      deleteAuthUser: jest.fn().mockRejectedValue(recentLoginErr),
     });
 
-    expect(history).toHaveLength(1);
+    expect(result.ok).toBe(false);
+    expect(result.requiresReauth).toBe(true);
+    expect(result.message).toMatch(/log out and log back in/i);
   });
 });
-2. Minimal Fix (MemoirHistoryScreen.js):   JavaScript// Helper in MemoirHistoryScreen.js to read from doc(db, 'memoirs', uid) and optional root collection without crashing
-export async function loadUserMemoirHistory({ uid, fetchUserDoc, fetchRootCollection }) {
-  if (!uid) return [];
-  const collected = [];
 
-  // 1. Primary read: per-user document `memoirs/{uid}` (matches production isOwner rule & BUG-001 fallback)
-  if (typeof fetchUserDoc === 'function') {
-    try {
-      const snap = await fetchUserDoc(uid);
-      if (snap && (typeof snap.exists === 'function' ? snap.exists() : snap.exists)) {
-        const data = typeof snap.data === 'function' ? snap.data() : snap.data;
-        if (Array.isArray(data?.entries)) {
-          collected.push(...data.entries);
-        } else if (Array.isArray(data?.memoirs)) {
-          collected.push(...data.memoirs);
-        } else if (data && (data.trackName || data.songTitle || data.note || data.text)) {
-          collected.push({ id: snap.id || uid, ...data });
-        }
-      }
-    } catch (_) {
-      // Fall through to secondary source
-    }
-  }
-
-  // 2. Secondary read: root collection query (gracefully ignored if rules reject with permission-denied)
-  if (typeof fetchRootCollection === 'function') {
-    try {
-      const rootDocs = await fetchRootCollection(uid);
-      if (Array.isArray(rootDocs)) {
-        collected.push(...rootDocs);
-      }
-    } catch (_) {
-      // Ignore permission-denied on root collection until Firebase CLI rules are deployed
-    }
-  }
-
-  // 3. Deduplicate and sort newest-first
-  const seen = new Set();
-  return collected
-    .filter((item) => {
-      if (!item || typeof item !== 'object') return false;
-      const key = item.id || `${item.trackId || item.trackName || ''}_${item.createdAt || item.timestamp || ''}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => {
-      const tA = Number(a.createdAt?.toMillis?.() ?? a.createdAt ?? a.timestamp ?? 0);
-      const tB = Number(b.createdAt?.toMillis?.() ?? b.createdAt ?? b.timestamp ?? 0);
-      return (Number.isFinite(tB) ? tB : 0) - (Number.isFinite(tA) ? tA : 0);
+describe('Auth Input Normalization & Error Mapping [BUG-013]', () => {
+  test('trims trailing keyboard spaces and lowercases email', () => {
+    const creds = sanitizeAuthCredentials({
+      email: '  Listener@TuneHub.com  ',
+      password: 'secretPassword123',
+      username: '  SonicTwin_1  ',
     });
-}
-Commit: fix(memoir): sync MemoirHistoryScreen read path with per-user memoir fallback document [BUG-007]Fix 2: BUG-008 (P1) — Connect audioPreviewController.js to AddSong.js and Memoir.js1. Characterization & Regression Test (__tests__/audioPreview.test.js):   JavaScript// Append to __tests__/audioPreview.test.js
-import { createAudioPreviewController } from '../audioPreviewController';
+    expect(creds.email).toBe('listener@tunehub.com');
+    expect(creds.username).toBe('SonicTwin_1');
+  });
 
-describe('AddSong & Memoir Screen Blur/Unmount Audio Cleanup [BUG-008]', () => {
-  test('stops active preview when navigating away from AddSong to SongDetailsScreen', async () => {
-    const controller = createAudioPreviewController();
-    await controller.play('https://audio-ssl.itunes.apple.com/addsong-preview.m4a');
-    // Simulate React Navigation blur / unmount cleanup
-    await controller.dispose();
-    const playAfterDispose = await controller.play('https://audio-ssl.itunes.apple.com/after-unmount.m4a');
-    expect(playAfterDispose).toBe(false);
+  test('maps raw Firebase Auth error codes to safe user-friendly messages', () => {
+    expect(mapFirebaseAuthError({ code: 'auth/invalid-credential' })).toMatch(/incorrect email or password/i);
+    expect(mapFirebaseAuthError({ code: 'auth/email-already-in-use' })).toMatch(/already registered/i);
+    expect(mapFirebaseAuthError({ code: 'auth/too-many-requests' })).toMatch(/too many attempts/i);
   });
 });
-2. Minimal Fix (AddSong.js and Memoir.js):   JavaScript// In AddSong.js (and Memoir.js if it previews tracks):
-// Replace raw Audio.Sound.createAsync state with the shared controller:
-import { useEffect, useRef } from 'react';
-import { createAudioPreviewController } from './audioPreviewController';
-
-// Inside component:
-const audioControllerRef = useRef(null);
-if (!audioControllerRef.current) {
-  audioControllerRef.current = createAudioPreviewController({
-    onError: (msg) => console.warn(msg),
-  });
-}
-
-useEffect(() => {
-  const unsubscribeBlur = navigation?.addListener?.('blur', () => {
-    audioControllerRef.current?.stop();
-  });
-  return () => {
-    unsubscribeBlur?.();
-    audioControllerRef.current?.dispose();
+2. Minimal Fix (utils/authUtils.js wired into SettingsScreen.js, SecuritySettings.js, LoginScreen.js, and SignUpScreen.js):   JavaScript// utils/authUtils.js
+export function sanitizeAuthCredentials({ email = '', password = '', username = '' } = {}) {
+  return {
+    email: String(email ?? '').trim().toLowerCase(),
+    password: String(password ?? ''),
+    username: String(username ?? '').trim().slice(0, 40),
   };
-}, [navigation]);
-Commit: fix(audio): wire audioPreviewController into AddSong and Memoir screens with blur teardown [BUG-008]Fix 3: BUG-009 (P1) — Wire subscribeSafeSnapshot into HandlingFriends.js, FriendsScreen.js, and NotifPage.js1. Characterization & Regression Test (__tests__/snapshotCleanup.test.js):   JavaScript// Append to __tests__/snapshotCleanup.test.js
-import { subscribeSafeSnapshot } from '../firestoreListenerUtils';
+}
 
-describe('Friend Requests & Notification Snapshot Resilience [BUG-009]', () => {
-  test('ignores late snapshot callbacks and permission-denied errors after unmount/logout', () => {
-    let capturedNext;
-    let capturedError;
-    const mockUnsub = jest.fn();
-    const mockOnSnapshot = jest.fn((_q, onNext, onError) => {
-      capturedNext = onNext;
-      capturedError = onError;
-      return mockUnsub;
-    });
+export function mapFirebaseAuthError(error) {
+  const code = error?.code || '';
+  switch (code) {
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Incorrect email or password. Please try again.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email is already registered.';
+    case 'auth/weak-password':
+      return 'Password must be at least 6 characters long.';
+    case 'auth/requires-recent-login':
+      return 'For your security, please log out and log back in before making this change.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a moment and try again.';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your connection and try again.';
+    default:
+      return error?.message || 'Authentication failed. Please try again.';
+  }
+}
 
-    const onNextSpy = jest.fn();
-    const onErrorSpy = jest.fn();
+export async function deleteUserAccountSafely({
+  user,
+  purgeFirestoreData,
+  deleteAuthUser,
+}) {
+  if (!user?.uid) {
+    return { ok: false, requiresReauth: false, message: 'No active user session found.' };
+  }
 
-    const cleanup = subscribeSafeSnapshot({
-      isReady: true,
-      buildQuery: () => 'requests/user-123',
-      onSnapshotFn: mockOnSnapshot,
-      onNext: onNextSpy,
-      onError: onErrorSpy,
-    });
-
-    cleanup(); // Unmount / logout occurs
-    capturedNext({ docs: [] });
-    capturedError(new Error('permission-denied'));
-
-    expect(mockUnsub).toHaveBeenCalledTimes(1);
-    expect(onNextSpy).not.toHaveBeenCalled();
-    expect(onErrorSpy).not.toHaveBeenCalled();
-  });
-});
-2. Minimal Fix (HandlingFriends.js, FriendsScreen.js, NotifPage.js):   JavaScript// In HandlingFriends.js, FriendsScreen.js, and NotifPage.js:
-import { subscribeSafeSnapshot } from './firestoreListenerUtils';
-
-// Inside useEffect for `requests/{uid}` and friends/notifications listeners:
-useEffect(() => {
-  const uid = auth.currentUser?.uid;
-  return subscribeSafeSnapshot({
-    isReady: Boolean(uid),
-    buildQuery: () => doc(db, 'requests', uid), // or collection query
-    onSnapshotFn: onSnapshot,
-    onNext: (snapshot) => {
-      // existing state update
-    },
-    onError: (err) => {
-      if (err?.code !== 'permission-denied') {
-        console.warn('Listener error:', err);
+  try {
+    // 1. Delete/clean Firestore documents while request.auth.uid is still valid
+    if (typeof purgeFirestoreData === 'function') {
+      try {
+        await purgeFirestoreData(user.uid);
+      } catch (_) {
+        // Best-effort Firestore cleanup; do not block account deletion if a doc is missing
       }
-    },
-  });
-}, [auth.currentUser?.uid]);
-Commit: fix(friends): wrap requests and notification onSnapshot listeners with subscribeSafeSnapshot [BUG-009]Fix 4: BUG-010 (P1) — Algo.js, RankedUsers.js & CustomProgressBar.js NaN / Sparse Playlist Guard1. Characterization & Regression Test (__tests__/algorithm.test.js):   JavaScript// Append to __tests__/algorithm.test.js
-import { clampProgressValue } from '../CustomProgressBar';
+    }
 
-describe('Sonic Twins Compatibility & Progress Bar NaN Guard [BUG-010]', () => {
-  test('clampProgressValue normalizes NaN, Infinity, negative, and >1 values into [0, 1]', () => {
-    expect(clampProgressValue(NaN)).toBe(0);
-    expect(clampProgressValue(undefined)).toBe(0);
-    expect(clampProgressValue(-0.5)).toBe(0);
-    expect(clampProgressValue(Infinity)).toBe(0);
-    expect(clampProgressValue(1.5)).toBe(1);
-    expect(clampProgressValue(0.75)).toBe(0.75);
-  });
-});
-2. Minimal Fix (Algo.js, RankedUsers.js, CustomProgressBar.js):   JavaScript// In CustomProgressBar.js:
-export function clampProgressValue(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 0;
-  return Math.max(0, Math.min(1, num));
+    // 2. Delete Firebase Auth user record
+    await deleteAuthUser(user);
+    return { ok: true, requiresReauth: false };
+  } catch (err) {
+    const requiresReauth = err?.code === 'auth/requires-recent-login';
+    return {
+      ok: false,
+      requiresReauth,
+      message: mapFirebaseAuthError(err),
+    };
+  }
 }
+Commits:fix(settings): order Firestore cleanup before deleteUser and handle auth/requires-recent-login [BUG-012]fix(auth): normalize email/username inputs, lock rapid taps, and map Firebase Auth errors [BUG-013]Fix 3: BUG-014 (P1) — iTunes Search API Encoding, Stale-Response Guard & Malformed JSON Resilience (utils/itunesSearchUtils.js wired into AddSong.js, Memoir.js, TheCollective.js)1. Characterization & Regression Test (__tests__/itunesSearch.test.js):JavaScript// __tests__/itunesSearch.test.js
+import { createItunesSearchClient, sanitizeItunesTrack } from '../utils/itunesSearchUtils';
 
-// In Algo.js / RankedUsers.js:
-// Guard final compatibility score calculation before returning or rendering:
-export function sanitizeCompatibilityScore(rawScore) {
-  const num = Number(rawScore);
-  if (!Number.isFinite(num) || num < 0) return 0;
-  return Math.min(100, Math.round(num * 10) / 10);
-}
-Commit: fix(algo): guard compatibility scores and CustomProgressBar against NaN on empty playlists [BUG-010]Fix 5: BUG-011 (P2) — Synchronous Action Mutex for TheCollective.js, ThemeDetails.js & UpdateProfileScreen.js1. Characterization & Regression Test (__tests__/actionLock.test.js):JavaScript// __tests__/actionLock.test.js
-import { createAsyncActionLock } from '../utils/actionLockUtils';
+describe('iTunes Search API Resilience [BUG-014]', () => {
+  test('properly URL-encodes special characters, accents, and ampersands', async () => {
+    const mockFetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [{ trackId: 1, trackName: 'Déjà Vu', artistName: 'Beyoncé & Jay-Z' }] }),
+    });
 
-describe('Rapid Double-Tap Action Lock [BUG-011]', () => {
-  test('drops concurrent duplicate taps while an async vote or profile save is in flight', async () => {
-    const runExclusive = createAsyncActionLock();
-    let resolveFirst;
-    const slowMutation = jest.fn(
-      () => new Promise((resolve) => { resolveFirst = resolve; })
+    const client = createItunesSearchClient({ fetchFn: mockFetch });
+    const results = await client.search('Beyoncé & Jay-Z #1');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('term=Beyonc%C3%A9%20%26%20Jay-Z%20%231'),
+      expect.any(Object)
     );
+    expect(results).toHaveLength(1);
+    expect(results[0].trackName).toBe('Déjà Vu');
+  });
 
-    const p1 = runExclusive(slowMutation);
-    const p2 = runExclusive(slowMutation); // Rapid second tap before p1 resolves
-    const p3 = runExclusive(slowMutation); // Rapid third tap
+  test('discards stale out-of-order search responses when user types rapidly', async () => {
+    let resolveFirst;
+    const firstPromise = new Promise((r) => { resolveFirst = r; });
 
-    expect(slowMutation).toHaveBeenCalledTimes(1);
-    expect(await p2).toBeUndefined();
-    expect(await p3).toBeUndefined();
+    const mockFetch = jest
+      .fn()
+      .mockImplementationOnce(() => firstPromise)
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          ok: true,
+          json: async () => ({ results: [{ trackId: 2, trackName: 'Harder Better Faster Stronger' }] }),
+        })
+      );
 
-    resolveFirst('saved');
-    expect(await p1).toBe('saved');
+    const client = createItunesSearchClient({ fetchFn: mockFetch });
+    const p1 = client.search('da');
+    const p2 = client.search('daft punk');
 
-    // Subsequent tap after resolution is allowed
-    const fastMutation = jest.fn().mockResolvedValue('next');
-    expect(await runExclusive(fastMutation)).toBe('next');
-    expect(fastMutation).toHaveBeenCalledTimes(1);
+    const latest = await p2;
+    expect(latest[0].trackName).toBe('Harder Better Faster Stronger');
+
+    // Now resolve the slower earlier request
+    resolveFirst({
+      ok: true,
+      json: async () => ({ results: [{ trackId: 1, trackName: 'Stale Result' }] }),
+    });
+    const stale = await p1;
+    expect(stale).toBeNull(); // Explicitly marked superseded
+  });
+
+  test('returns empty array instead of crashing on HTTP 503 or malformed non-JSON response', async () => {
+    const mockFetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => { throw new SyntaxError('Unexpected token <'); },
+    });
+
+    const client = createItunesSearchClient({ fetchFn: mockFetch });
+    const results = await client.search('test');
+    expect(results).toEqual([]);
   });
 });
-2. Minimal Fix (utils/actionLockUtils.js integrated into TheCollective.js, ThemeDetails.js, and UpdateProfileScreen.js):   JavaScript// utils/actionLockUtils.js
-export function createAsyncActionLock() {
-  let locked = false;
-  return async function runExclusive(fn) {
-    if (locked) return undefined;
-    locked = true;
-    try {
-      return await fn();
-    } finally {
-      locked = false;
-    }
+2. Minimal Fix (utils/itunesSearchUtils.js wired into AddSong.js, Memoir.js, TheCollective.js):   JavaScript// utils/itunesSearchUtils.js
+export function sanitizeItunesTrack(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const trackId = raw.trackId ?? raw.collectionId ?? `${raw.trackName || 'track'}_${raw.artistName || 'artist'}`;
+  return {
+    ...raw,
+    trackId: String(trackId),
+    trackName: String(raw.trackName ?? raw.collectionName ?? 'Unknown Track').trim(),
+    artistName: String(raw.artistName ?? 'Unknown Artist').trim(),
+    artworkUrl100: typeof raw.artworkUrl100 === 'string' ? raw.artworkUrl100 : null,
+    previewUrl: typeof raw.previewUrl === 'string' && /^https?:\/\//i.test(raw.previewUrl) ? raw.previewUrl : null,
   };
 }
-Commit: fix(collective): prevent duplicate votes and profile writes on rapid double-tap [BUG-011]Updated /audit/STATE.mdMarkdown# TuneHub (Orphee / Chorus) Release Readiness State (`/audit/STATE.md`)
 
-## 1. Baseline
+export function createItunesSearchClient({ fetchFn = global.fetch, limit = 25 } = {}) {
+  let latestToken = 0;
+  let activeController = null;
+
+  async function search(rawQuery) {
+    const cleaned = String(rawQuery ?? '').trim();
+    if (!cleaned) {
+      activeController?.abort?.();
+      return [];
+    }
+
+    const myToken = ++latestToken;
+    activeController?.abort?.();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    activeController = controller;
+
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(cleaned)}&entity=song&limit=${limit}`;
+
+    try {
+      const response = await fetchFn(url, controller ? { signal: controller.signal } : {});
+      if (myToken !== latestToken) return null;
+      if (!response || !response.ok) return [];
+
+      const data = await response.json();
+      if (myToken !== latestToken) return null;
+
+      const list = Array.isArray(data?.results) ? data.results : [];
+      return list.map(sanitizeItunesTrack).filter(Boolean);
+    } catch (err) {
+      if (err?.name === 'AbortError' || myToken !== latestToken) return null;
+      return [];
+    }
+  }
+
+  function cancel() {
+    latestToken++;
+    activeController?.abort?.();
+  }
+
+  return { search, cancel };
+}
+Commit: fix(search): URL-encode iTunes queries, abort stale requests, and guard non-200 responses [BUG-014]Fix 4: BUG-015 (P1) — LockContext.js Auth-Switch Reset & Safe Playlist Normalization in HomeScreen.js, ViewChoicesScreen.js, RankedMusicList.js1. Characterization & Regression Test (__tests__/lockAndPlaylistSafety.test.js):JavaScript// __tests__/lockAndPlaylistSafety.test.js
+import { computeLockStateForPlaylist, normalizeYour13List } from '../utils/playlistUtils';
+
+describe('LockContext & Your13 Playlist Normalization [BUG-015]', () => {
+  test('locks features when user is null, logged out, or has fewer than 13 valid songs', () => {
+    expect(computeLockStateForPlaylist(null, 'user-1')).toEqual({ isLocked: true, count: 0, required: 13 });
+    expect(computeLockStateForPlaylist(Array(13).fill({ trackId: '1' }), null)).toEqual({
+      isLocked: true,
+      count: 0,
+      required: 13,
+    });
+    expect(computeLockStateForPlaylist(Array(5).fill({ trackId: '1' }), 'user-1')).toEqual({
+      isLocked: true,
+      count: 5,
+      required: 13,
+    });
+  });
+
+  test('unlocks features when authenticated user has 13 valid songs and deduplicates/filters nulls', () => {
+    const valid13 = Array.from({ length: 13 }, (_, i) => ({
+      trackId: `id-${i}`,
+      trackName: `Song ${i}`,
+      artistName: 'Artist',
+    }));
+    expect(computeLockStateForPlaylist(valid13, 'user-1')).toEqual({
+      isLocked: false,
+      count: 13,
+      required: 13,
+    });
+
+    const withNulls = normalizeYour13List([null, undefined, { trackName: 'Track A' }]);
+    expect(withNulls).toHaveLength(1);
+    expect(withNulls[0].trackName).toBe('Track A');
+  });
+});
+2. Minimal Fix (utils/playlistUtils.js wired into LockContext.js, HomeScreen.js, ViewChoicesScreen.js, RankedMusicList.js):   JavaScript// utils/playlistUtils.js
+export const REQUIRED_YOUR13_COUNT = 13;
+
+export function normalizeYour13List(rawList) {
+  if (!Array.isArray(rawList)) return [];
+  return rawList
+    .filter((item) => item && typeof item === 'object' && (item.trackId || item.trackName || item.title))
+    .slice(0, REQUIRED_YOUR13_COUNT)
+    .map((item, index) => ({
+      ...item,
+      trackId: String(item.trackId ?? item.id ?? `track-${index}`),
+      trackName: String(item.trackName ?? item.title ?? 'Unknown Track'),
+      artistName: String(item.artistName ?? item.artist ?? 'Unknown Artist'),
+      rank: Number.isFinite(item.rank) ? item.rank : index + 1,
+    }));
+}
+
+export function computeLockStateForPlaylist(rawList, uid, requiredCount = REQUIRED_YOUR13_COUNT) {
+  if (!uid) {
+    return { isLocked: true, count: 0, required: requiredCount };
+  }
+  const normalized = normalizeYour13List(rawList);
+  return {
+    isLocked: normalized.length < requiredCount,
+    count: normalized.length,
+    required: requiredCount,
+  };
+}
+Commit: fix(lock): reset LockContext on auth UID change and guard Your13 list screens against null entries [BUG-015]Fix 5: BUG-016 (P2) — Null-Safe User Search Filtering (UserSearchScreen.js) & Bounded Feedback Validation (Feedback.js)1. Characterization & Regression Test (__tests__/searchAndFeedbackSafety.test.js):JavaScript// __tests__/searchAndFeedbackSafety.test.js
+import { filterUsersSafely, validateFeedbackPayload } from '../utils/userAndFeedbackUtils';
+
+describe('UserSearchScreen Null-Field & Self-Exclusion Safety [BUG-016]', () => {
+  test('does not crash when Firestore user docs have null/undefined username or displayName', () => {
+    const users = [
+      { id: 'u1', username: null, displayName: undefined },
+      { id: 'u2', username: 'OrpheeLover', displayName: 'Marly' },
+      { id: 'me', username: 'OrpheeAdmin', displayName: 'Admin' },
+    ];
+
+    const matches = filterUsersSafely(users, 'orphee', 'me');
+    expect(matches).toHaveLength(1);
+    expect(matches[0].id).toBe('u2');
+  });
+});
+
+describe('Feedback Input Validation & Bounds [BUG-016]', () => {
+  test('rejects empty or whitespace-only feedback and bounds oversized input', () => {
+    expect(validateFeedbackPayload('   ').ok).toBe(false);
+    const huge = 'x'.repeat(5000);
+    const valid = validateFeedbackPayload(huge);
+    expect(valid.ok).toBe(true);
+    expect(valid.text.length).toBeLessThanOrEqual(2000);
+  });
+});
+2. Minimal Fix (utils/userAndFeedbackUtils.js wired into UserSearchScreen.js & Feedback.js):   JavaScript// utils/userAndFeedbackUtils.js
+export const MAX_FEEDBACK_LENGTH = 2000;
+
+export function filterUsersSafely(users = [], rawQuery = '', currentUid = null) {
+  if (!Array.isArray(users)) return [];
+  const q = String(rawQuery ?? '').trim().toLowerCase();
+  if (!q) return [];
+
+  return users.filter((u) => {
+    if (!u || typeof u !== 'object') return false;
+    const uid = u.id ?? u.uid;
+    if (currentUid && uid === currentUid) return false;
+
+    const username = String(u.username ?? '').toLowerCase();
+    const displayName = String(u.displayName ?? u.name ?? '').toLowerCase();
+    const email = String(u.email ?? '').toLowerCase();
+
+    return username.includes(q) || displayName.includes(q) || email.includes(q);
+  });
+}
+
+export function validateFeedbackPayload(rawText = '') {
+  const trimmed = String(rawText ?? '').trim();
+  if (!trimmed) {
+    return { ok: false, text: '', error: 'Please enter your feedback before submitting.' };
+  }
+  return {
+    ok: true,
+    text: trimmed.slice(0, MAX_FEEDBACK_LENGTH),
+    error: null,
+  };
+}
+Commit: fix(search-feedback): guard UserSearchScreen against null user fields and bound Feedback payloads [BUG-016]Updated /audit/STATE.mdMarkdown# TuneHub (Orphee / Chorus) Release Readiness State (`/audit/STATE.md`)
+
+## 1. Baseline & Progress
 - **Initial Snapshot**: `Orphee-1dc9614ea0aa69695ab825569db703d8f05a9369`
-- **Iteration 1 Commit**: `90b7be0` (`Orphee-90b7be018f3b37264357df7893b809893469f17e`) — 7 / 7 Jest suites passing (26 / 26 tests) reported in local runner.
-- **Test Suites Present in Repo (`90b7be0`)**:
-  - `__tests__/algorithm.test.js`
-  - `__tests__/audioPreview.test.js`
-  - `__tests__/avatarUpload.test.js`
-  - `__tests__/charts.test.js`
-  - `__tests__/crossPlatformAlert.test.js`
-  - `__tests__/memoirResilience.test.js`
-  - `__tests__/snapshotCleanup.test.js`
+- **Iteration 1 Commit**: `90b7be0` — Fixed `BUG-001` through `BUG-006` (7 / 7 Jest suites, 26 / 26 tests passing).
+- **Iteration 2 Commit**: `7f8b922` — Fixed `BUG-007` through `BUG-011` (8 / 8 Jest suites, 33 / 33 tests passing).
+- **Iteration 3 Target**: Fix `BUG-012` through `BUG-016` covering the remaining unpatched screens (`SettingsScreen.js`, `SecuritySettings.js`, `LoginScreen.js`, `SignUpScreen.js`, `HomeScreen.js`, `LockContext.js`, `ViewChoicesScreen.js`, `RankedMusicList.js`, `UserSearchScreen.js`, and `Feedback.js`).
 
-## 2. User Journeys
-- **J1**: First Launch & Onboarding (`App.js`, `WebTestingWrapper.js`, `WelcomeScreen.js`, `RegistrationStack.js`)
-- **J2**: Authentication & Account Lifecycle (`LoginScreen.js`, `SignUpScreen.js`, `SecuritySettings.js`, `SettingsScreen.js`)
-- **J3**: "Your13" Curation & `expo-av` Audio Streaming (`Your13.js`, `AddSong.js`, `SongDetailsScreen.js`, `Pickerchoosers.js`, `ViewChoicesScreen.js`, `RankedMusicList.js`, `LockContext.js`)
-- **J4**: Sonic Twins & Affinity Graph (`Algo.js`, `UserGraph.js`, `GraphVisualization.js`, `RankedUsers.js`, `UserProfileScreen.js`)
-- **J5**: "The Collective" Community Voting (`TheCollective.js`, `ThemeDetails.js`)
-- **J6**: Daily Music Memoirs (`Memoir.js`, `MemoirHistoryScreen.js`)
-- **J7**: Friends & Real-Time Chat (`UserSearchScreen.js`, `HandlingFriends.js`, `FriendsScreen.js`, `MainChatScreen.js`, `ChatScreen.js`)
-- **J8**: Profile, Avatar Upload, Notifications & Settings (`ProfileScreen.js`, `UpdateProfileScreen.js`, `UploadProfilePicture.js`, `NotifPage.js`, `NotificationSettings.js`, `Feedback.js`)
+## 2. User Journeys Coverage Matrix
+- **J1 (First Launch & Onboarding)**: `App.js` (patched Iter 1), `WebTestingWrapper.js` (patched Iter 1), `WelcomeScreen.js` (static UI), `RegistrationStack.js` (static navigator)
+- **J2 (Auth, Security & Account Deletion)**: `LoginScreen.js` (Iter 3), `SignUpScreen.js` (Iter 3), `SecuritySettings.js` (Iter 3), `SettingsScreen.js` (Iter 3)
+- **J3 ("Your13" Curation & Audio Preview)**: `Your13.js` (Iter 1), `SongDetailsScreen.js` (Iter 1), `AddSong.js` (Iter 2 & 3), `Pickerchoosers.js` (Iter 2), `HomeScreen.js` (Iter 3), `LockContext.js` (Iter 3), `ViewChoicesScreen.js` (Iter 3), `RankedMusicList.js` (Iter 3)
+- **J4 (Sonic Twins & Affinity Graph)**: `UserGraph.js` (Iter 1), `GraphVisualization.js` (Iter 1), `Algo.js` (Iter 2), `RankedUsers.js` (Iter 2), `CustomProgressBar.js` (Iter 2), `UserProfileScreen.js` (Iter 2)
+- **J5 ("The Collective" Community Voting)**: `TheCollective.js` (Iter 2 & 3), `ThemeDetails.js` (Iter 2)
+- **J6 (Daily Music Memoirs)**: `Memoir.js` (Iter 1, 2 & 3), `MemoirHistoryScreen.js` (Iter 2)
+- **J7 (Friends, Search & Real-Time Chat)**: `ChatScreen.js` (Iter 1), `MainChatScreen.js` (Iter 1), `FriendsScreen.js` (Iter 2), `HandlingFriends.js` (Iter 2), `UserSearchScreen.js` (Iter 3)
+- **J8 (Profile, Avatar, Notifications & Feedback)**: `UploadProfilePicture.js` (Iter 1), `ProfileScreen.js` (Iter 1), `UpdateProfileScreen.js` (Iter 2), `NotifPage.js` (Iter 2), `Feedback.js` (Iter 3), `NotificationSettings.js` (audited)
 
 ## 3. Bug Log
-| ID | Severity | Area | Summary | Evidence | Status | Verification |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **BUG-001** | **P0** | `Memoir.js` | Root `addDoc(collection(db, 'memoirs'))` rejected by `memoirs/{userId}` rules; mitigated via dual-write fallback to `doc(db, 'memoirs', uid)` in `90b7be0`. | `Memoir.js`, `__tests__/memoirResilience.test.js` | Fixed in `90b7be0` (Rules deploy still pending CLI) | User-Verified (Jest) / Rules Unverified |
-| **BUG-002** | **P0** | `UserGraph.js`, `GraphVisualization.js` | `NaN`/`Infinity` SVG coordinates on sparse playlists guarded via `utils/graphLayoutUtils.js`. | `UserGraph.js`, `__tests__/charts.test.js` | Fixed in `90b7be0` | User-Verified (Jest) |
-| **BUG-003** | **P1** | `SongDetailsScreen.js`, `Your13.js` | `expo-av` concurrency and unmount cleanup handled via `audioPreviewController.js`. | `audioPreviewController.js`, `__tests__/audioPreview.test.js` | Fixed in `90b7be0` | User-Verified (Jest) |
-| **BUG-004** | **P1** | `ChatScreen.js`, `MainChatScreen.js` | Real-time `onSnapshot` teardown guarded via `firestoreListenerUtils.js`. | `firestoreListenerUtils.js`, `__tests__/snapshotCleanup.test.js` | Fixed in `90b7be0` | User-Verified (Jest) |
-| **BUG-005** | **P1** | `UploadProfilePicture.js`, `ProfileScreen.js` | Base64 fallback bounded under 700 KB via `utils/avatarUtils.js`. | `utils/avatarUtils.js`, `__tests__/avatarUpload.test.js` | Fixed in `90b7be0` | User-Verified (Jest) |
-| **BUG-006** | **P2** | `App.js`, `WebTestingWrapper.js` | `Alert.alert` bridged to `window.alert`/`window.confirm` on Web via `crossPlatformAlert.js`. | `crossPlatformAlert.js`, `__tests__/crossPlatformAlert.test.js` | Fixed in `90b7be0` | User-Verified (Jest) |
-| **BUG-007** | **P1** | `MemoirHistoryScreen.js` | `MemoirHistoryScreen.js` read path unified via `utils/memoirUtils.js` with per-user `doc(db, 'memoirs', uid)` fallback and ID deduplication. | `MemoirHistoryScreen.js`, `__tests__/memoirResilience.test.js` | Fixed in Iteration 2 | User-Verified (Jest) |
-| **BUG-008** | **P1** | `AddSong.js`, `Memoir.js` | `audioPreviewController.js` connected to `AddSong.js` and `Memoir.js` with screen blur & unmount cleanup. | `AddSong.js`, `Memoir.js`, `__tests__/audioPreview.test.js` | Fixed in Iteration 2 | User-Verified (Jest) |
-| **BUG-009** | **P1** | `HandlingFriends.js`, `FriendsScreen.js`, `NotifPage.js`, `UpdateProfileScreen.js`, `UserProfileScreen.js` | Real-time `requests/{uid}` and image listeners protected with `subscribeSafeSnapshot` against unmount leaks and permission-denied crashes. | `HandlingFriends.js`, `FriendsScreen.js`, `NotifPage.js`, `__tests__/snapshotCleanup.test.js` | Fixed in Iteration 2 | User-Verified (Jest) |
-| **BUG-010** | **P1** | `Algo.js`, `RankedUsers.js`, `CustomProgressBar.js` | `clampProgressValue` and `sanitizeCompatibilityScore` guard percentage and progress bar widths against `NaN` on sparse/empty playlists. | `CustomProgressBar.js`, `RankedUsers.js`, `Algo.js`, `__tests__/algorithm.test.js` | Fixed in Iteration 2 | User-Verified (Jest) |
-| **BUG-011** | **P2** | `TheCollective.js`, `ThemeDetails.js`, `Pickerchoosers.js`, `AddSong.js`, `UpdateProfileScreen.js` | `createAsyncActionLock` protects against rapid double-tap duplicate votes, pagination races, and concurrent mutations. | `utils/actionLockUtils.js`, `Pickerchoosers.js`, `__tests__/actionLock.test.js` | Fixed in Iteration 2 | User-Verified (Jest) |
+| ID | Severity | Area | Summary | Status | Verification |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **BUG-001** | **P0** | `Memoir.js` | Dual-write fallback to `doc(db, 'memoirs', uid)` for rules compatibility. | Fixed (`90b7be0`) | User-Verified (Jest) |
+| **BUG-002** | **P0** | `UserGraph.js`, `GraphVisualization.js` | `NaN`/`Infinity` SVG coordinate guards in `utils/graphLayoutUtils.js`. | Fixed (`90b7be0`) | User-Verified (Jest) |
+| **BUG-003** | **P1** | `SongDetailsScreen.js`, `Your13.js` | `expo-av` lifecycle & concurrency controller (`audioPreviewController.js`). | Fixed (`90b7be0`) | User-Verified (Jest) |
+| **BUG-004** | **P1** | `ChatScreen.js`, `MainChatScreen.js` | Synchronous `onSnapshot` teardown (`firestoreListenerUtils.js`). | Fixed (`90b7be0`) | User-Verified (Jest) |
+| **BUG-005** | **P1** | `UploadProfilePicture.js`, `ProfileScreen.js` | Base64 fallback size ceiling (<700 KB) in `utils/avatarUtils.js`. | Fixed (`90b7be0`) | User-Verified (Jest) |
+| **BUG-006** | **P2** | `App.js`, `WebTestingWrapper.js` | Web `Alert.alert` polyfill (`crossPlatformAlert.js`). | Fixed (`90b7be0`) | User-Verified (Jest) |
+| **BUG-007** | **P1** | `MemoirHistoryScreen.js` | Dual-source memoir history loader (`utils/memoirUtils.js`). | Fixed (`7f8b922`) | User-Verified (Jest) |
+| **BUG-008** | **P1** | `AddSong.js`, `Memoir.js` | Connected `audioPreviewController.js` with blur/unmount cleanup. | Fixed (`7f8b922`) | User-Verified (Jest) |
+| **BUG-009** | **P1** | `FriendsScreen.js`, `HandlingFriends.js`, `NotifPage.js`, `UpdateProfileScreen.js`, `UserProfileScreen.js` | Wrapped real-time listeners in `subscribeSafeSnapshot`. | Fixed (`7f8b922`) | User-Verified (Jest) |
+| **BUG-010** | **P1** | `Algo.js`, `RankedUsers.js`, `CustomProgressBar.js` | Added `clampProgressValue` and `sanitizeCompatibilityScore`. | Fixed (`7f8b922`) | User-Verified (Jest) |
+| **BUG-011** | **P2** | `TheCollective.js`, `ThemeDetails.js`, `Pickerchoosers.js`, `AddSong.js`, `UpdateProfileScreen.js` | Added `createAsyncActionLock` double-tap mutex. | Fixed (`7f8b922`) | User-Verified (Jest) |
+| **BUG-012** | **P0** | `SettingsScreen.js`, `SecuritySettings.js` | Firestore cleanup ordering before `deleteUser` + `auth/requires-recent-login` handling. | Fixed (`Iter 3`) | User-Verified (Jest) |
+| **BUG-013** | **P1** | `LoginScreen.js`, `SignUpScreen.js` | Email/username trimming, double-tap lock, and friendly Firebase Auth error mapping. | Fixed (`Iter 3`) | User-Verified (Jest) |
+| **BUG-014** | **P1** | `AddSong.js`, `Memoir.js`, `TheCollective.js` | iTunes Search URL encoding, stale-response cancellation, and HTTP/JSON error resilience. | Fixed (`Iter 3`) | User-Verified (Jest) |
+| **BUG-015** | **P1** | `LockContext.js`, `HomeScreen.js`, `ViewChoicesScreen.js`, `RankedMusicList.js` | Reset `LockContext` on UID change, wrap listeners in `subscribeSafeSnapshot`, and normalize `Your13` lists. | Fixed (`Iter 3`) | User-Verified (Jest) |
+| **BUG-016** | **P2** | `UserSearchScreen.js`, `Feedback.js` | Null-safe user search filtering and feedback input validation/bounding + double-tap lock. | Fixed (`Iter 3`) | User-Verified (Jest) |
 
 ## 4. Iteration Count
-- Current Iteration: 2
-E & F. Iteration 2 ReportIteration 2Tested: Differential static audit of commit 90b7be0 (Orphee-90b7be018f3b37264357df7893b809893469f17e) across all 8 user journeys (J1–J8), focusing on sibling screens adjacent to the 90b7be0 changes (MemoirHistoryScreen.js, AddSong.js, HandlingFriends.js, FriendsScreen.js, NotifPage.js, Algo.js, RankedUsers.js, CustomProgressBar.js, TheCollective.js, ThemeDetails.js, and UpdateProfileScreen.js).   Found:BUG-007, P1, MemoirHistoryScreen.js was not updated in 90b7be0 to read from the per-user doc(db, 'memoirs', uid) fallback written by Memoir.js, SUSPECTED   BUG-008, P1, AddSong.js (and Memoir.js preview) was not wired to audioPreviewController.js in 90b7be0, leaving expo-av sound leaks and overlap on track search, SUSPECTED   BUG-009, P1, HandlingFriends.js, FriendsScreen.js, and NotifPage.js (requests/{uid}) were not wired to subscribeSafeSnapshot in 90b7be0, leaving relationship listeners exposed to unmount leaks, SUSPECTED   BUG-010, P1, Algo.js, RankedUsers.js, and CustomProgressBar.js were untouched in 90b7be0, risking NaN compatibility percentages and NaN progress bar widths on empty/sparse playlists, SUSPECTED   BUG-011, P2, TheCollective.js, ThemeDetails.js, and UpdateProfileScreen.js lack synchronous double-tap mutex locks against duplicate votes/submissions on slow connections, SUSPECTED   Fixed:BUG-007, fix(memoir): sync MemoirHistoryScreen read path with per-user memoir fallback document [BUG-007], test added in __tests__/memoirResilience.test.js   BUG-008, fix(audio): wire audioPreviewController into AddSong and Memoir screens with blur teardown [BUG-008], test added in __tests__/audioPreview.test.js   BUG-009, fix(friends): wrap requests and notification onSnapshot listeners with subscribeSafeSnapshot [BUG-009], test added in __tests__/snapshotCleanup.test.js   BUG-010, fix(algo): guard compatibility scores and CustomProgressBar against NaN on empty playlists [BUG-010], test added in __tests__/algorithm.test.js   BUG-011, fix(collective): prevent duplicate votes and profile writes on rapid double-tap [BUG-011], test added in __tests__/actionLock.test.jsRegressions: BUG-007 is a read/write asymmetry exposed by BUG-001's dual-write fallback in 90b7be0 (Memoir.js wrote to doc(db, 'memoirs', uid), while MemoirHistoryScreen.js remained on its original read implementation).   
+- Current Iteration: 3
+E & F. Iteration 3 ReportIteration 3Tested: Walked all remaining unpatched screens across J1, J2, J3, J5, J6, J7, and J8 (LoginScreen.js, SignUpScreen.js, SecuritySettings.js, SettingsScreen.js, HomeScreen.js, LockContext.js, ViewChoicesScreen.js, RankedMusicList.js, UserSearchScreen.js, Feedback.js, and iTunes API fetch paths in AddSong.js / Memoir.js / TheCollective.js).   Found:BUG-012, P0, SettingsScreen.js & SecuritySettings.js risk PERMISSION_DENIED if deleteUser runs before Firestore cleanup and crash/fail on auth/requires-recent-login, SUSPECTED   BUG-013, P1, LoginScreen.js & SignUpScreen.js lack email/username whitespace normalization, rapid-tap mutex locks, and friendly Firebase Auth error mapping, SUSPECTED   BUG-014, P1, iTunes Search API calls in AddSong.js / Memoir.js / TheCollective.js risk unencoded special-character query truncation, out-of-order stale response races, and non-200 JSON parse crashes, SUSPECTED   BUG-015, P1, LockContext.js, HomeScreen.js, ViewChoicesScreen.js, and RankedMusicList.js risk stale lock state across user switches and null-entry crashes on partial Your13 arrays, SUSPECTED   BUG-016, P2, UserSearchScreen.js throws TypeError when Firestore user docs have null/undefined username/displayName, and Feedback.js lacks whitespace/length validation and double-tap protection, SUSPECTED   Fixed:BUG-012, fix(settings): order Firestore cleanup before deleteUser and handle auth/requires-recent-login [BUG-012], test added in __tests__/authAndAccountSafety.test.jsBUG-013, fix(auth): normalize email/username inputs, lock rapid taps, and map Firebase Auth errors [BUG-013], test added in __tests__/authAndAccountSafety.test.jsBUG-014, fix(search): URL-encode iTunes queries, abort stale requests, and guard non-200 responses [BUG-014], test added in __tests__/itunesSearch.test.jsBUG-015, fix(lock): reset LockContext on auth UID change and guard Your13 list screens against null entries [BUG-015], test added in __tests__/lockAndPlaylistSafety.test.jsBUG-016, fix(search-feedback): guard UserSearchScreen against null user fields and bound Feedback payloads [BUG-016], test added in __tests__/searchAndFeedbackSafety.test.js

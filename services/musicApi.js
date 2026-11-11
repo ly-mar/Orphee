@@ -1,6 +1,9 @@
 // services/musicApi.js
 import axios from 'axios';
 import debounce from 'lodash.debounce';
+import { createItunesSearchClient, sanitizeItunesTrack } from '../utils/itunesSearchUtils';
+
+export { createItunesSearchClient, sanitizeItunesTrack };
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const searchCache = new Map();
@@ -67,30 +70,34 @@ export async function searchMusic(query, options = {}) {
         return cached.results;
     }
 
-    const response = await axios.get('https://itunes.apple.com/search', {
-        params: {
-            term: trimmed,
-            media: 'music',
-            entity,
-            country,
-            limit,
-        },
-        timeout: 8000,
-    });
+    try {
+        const response = await axios.get('https://itunes.apple.com/search', {
+            params: {
+                term: trimmed,
+                media: 'music',
+                entity,
+                country,
+                limit,
+            },
+            timeout: 8000,
+        });
 
-    const rawResults = Array.isArray(response.data?.results)
-        ? response.data.results
-        : [];
-    const normalizedResults = rawResults
-        .filter((item) => item && (item.trackId || item.trackName))
-        .map(normalizeTrack);
+        const rawResults = Array.isArray(response.data?.results)
+            ? response.data.results
+            : [];
+        const normalizedResults = rawResults
+            .filter((item) => item && (item.trackId || item.trackName))
+            .map(normalizeTrack);
 
-    searchCache.set(cacheKey, {
-        timestamp: Date.now(),
-        results: normalizedResults,
-    });
+        searchCache.set(cacheKey, {
+            timestamp: Date.now(),
+            results: normalizedResults,
+        });
 
-    return normalizedResults;
+        return normalizedResults;
+    } catch (_) {
+        return [];
+    }
 }
 
 export function createDebouncedSearch(callback, waitMs = 380) {

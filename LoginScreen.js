@@ -1,49 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet, Text, Alert, Platform, ActivityIndicator } from 'react-native';
 import { loginUser, resetPassword } from './auth-api';
 import LottieView from 'lottie-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { createAsyncActionLock } from './utils/actionLockUtils';
+import { sanitizeAuthCredentials } from './utils/authUtils';
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const actionLockRef = useRef(createAsyncActionLock());
 
   const fillTestCredentials = () => {
     setEmail('hihicad881@chainds.com');
     setPassword('hihicad881@chainds.com');
   };
 
-  const handleLogin = async () => {
-    if (!email || !password) {
+  const handleLogin = () => {
+    const creds = sanitizeAuthCredentials({ email, password });
+    if (!creds.email || !creds.password) {
       Alert.alert('Error', 'Please enter both email and password.');
       return;
     }
 
-    setLoading(true);
-    const result = await loginUser(email, password);
-    setLoading(false);
+    return actionLockRef.current(async () => {
+      setLoading(true);
+      const result = await loginUser(creds.email, creds.password);
+      setLoading(false);
 
-    if (result.error) {
-      Alert.alert('Error', result.error);
-    } else {
-      navigation.navigate('Home');
-    }
+      if (result.error) {
+        Alert.alert('Error', result.error);
+      } else {
+        navigation.navigate('Home');
+      }
+    });
   };
 
-  const handlePasswordReset = async () => {
-    if (!email) {
+  const handlePasswordReset = () => {
+    const creds = sanitizeAuthCredentials({ email });
+    if (!creds.email) {
       Alert.alert('Error', 'Please enter your email to reset the password.');
       return;
     }
 
-    const result = await resetPassword(email);
-    if (result.error) {
-      Alert.alert('Error', result.error);
-    } else {
-      Alert.alert('Success', 'Password reset email has been sent. Please check your inbox.');
-    }
+    return actionLockRef.current(async () => {
+      const result = await resetPassword(creds.email);
+      if (result.error) {
+        Alert.alert('Error', result.error);
+      } else {
+        Alert.alert('Success', 'Password reset email has been sent. Please check your inbox.');
+      }
+    });
   };
 
   return (

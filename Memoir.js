@@ -29,6 +29,7 @@ import { Feather } from '@expo/vector-icons';
 import Taskbar from './Taskbar';
 import { normalizeTrack, getHighResImage } from './services/musicApi';
 import { createAudioPreviewController } from './audioPreviewController';
+import { createItunesSearchClient } from './utils/itunesSearchUtils';
 
 export { normalizeTrack };
 
@@ -49,6 +50,11 @@ export default function Memoir({ route, navigation }) {
     const [loadingSearch, setLoadingSearch] = useState(false);
     const [saving, setSaving] = useState(false);
     const [username, setUsername] = useState('Sigma');
+
+    const itunesClientRef = useRef(null);
+    if (!itunesClientRef.current) {
+        itunesClientRef.current = createItunesSearchClient({ limit: 12 });
+    }
 
     const audioControllerRef = useRef(null);
     if (!audioControllerRef.current) {
@@ -83,29 +89,23 @@ export default function Memoir({ route, navigation }) {
 
     useEffect(() => {
         if (searchQuery.trim().length < 2) {
+            itunesClientRef.current?.cancel();
             setSearchResults([]);
+            setLoadingSearch(false);
             return;
         }
         const timer = setTimeout(async () => {
-            try {
-                setLoadingSearch(true);
-                const res = await axios.get('https://itunes.apple.com/search', {
-                    params: {
-                        term: searchQuery.trim(),
-                        media: 'music',
-                        entity: 'song',
-                        limit: 12,
-                    },
-                });
-                setSearchResults((res.data?.results || []).map(normalizeTrack));
-            } catch (err) {
-                console.error('Error searching iTunes:', err);
-            } finally {
+            setLoadingSearch(true);
+            const results = await itunesClientRef.current.search(searchQuery);
+            if (results !== null) {
+                setSearchResults(results.map(normalizeTrack));
                 setLoadingSearch(false);
             }
         }, 350);
 
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+        };
     }, [searchQuery]);
 
     const handleSaveMemoir = async () => {
