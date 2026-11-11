@@ -1,11 +1,48 @@
 // HomeScreen.js
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ScrollView, StyleSheet, SafeAreaView, TouchableOpacity, ImageBackground, View } from 'react-native';
 import { Text, Card, Button } from 'react-native-paper';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from './firebaseConfig';
+import { subscribeSafeSnapshot } from './firestoreListenerUtils';
+import { deriveHomeDashboardState } from './utils/homeDashboardUtils';
 import Taskbar from './Taskbar';
 import backgroundImage from './assets/bri-tucker-AJD3XJlvBZ8-unsplash.jpg';
 
 function HomeScreen({ navigation }) {
+  const [currentUser, setCurrentUser] = useState(auth.currentUser || null);
+  const [userPlaylistDoc, setUserPlaylistDoc] = useState(null);
+
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user || null);
+      if (!user) {
+        setUserPlaylistDoc(null);
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    const uid = currentUser?.uid;
+    return subscribeSafeSnapshot({
+      isReady: Boolean(uid),
+      buildQuery: () => doc(db, 'playlists', uid),
+      onSnapshotFn: onSnapshot,
+      onNext: (snapshot) => {
+        setUserPlaylistDoc(snapshot && snapshot.exists() ? snapshot.data() : null);
+      },
+      onError: (err) => {
+        if (err?.code !== 'permission-denied') {
+          console.warn('HomeScreen playlist listener error:', err);
+        }
+      },
+    });
+  }, [currentUser?.uid]);
+
+  const dashboardState = deriveHomeDashboardState(currentUser, userPlaylistDoc);
+
   return (
     <ImageBackground source={backgroundImage} style={styles.backgroundImage}>
       <View style={styles.overlay}>
@@ -18,7 +55,9 @@ function HomeScreen({ navigation }) {
               <View style={styles.headerBlock}>
                 <Text style={styles.headerText}>Shape Your Community with Chorus</Text>
                 <Text style={styles.subHeaderText}>
-                  The social platform designed for music lovers & party regulars
+                  {dashboardState.isAuthenticated
+                    ? `Welcome, ${dashboardState.displayName} • ${dashboardState.progressCount}/${dashboardState.requiredCount} Your13 tracks ready`
+                    : 'The social platform designed for music lovers & party regulars'}
                 </Text>
               </View>
 
@@ -31,7 +70,11 @@ function HomeScreen({ navigation }) {
                 <Card.Cover source={require('./assets/your13.jpg')} style={styles.cardCover} />
                 <View style={styles.cardContent}>
                   <Text style={styles.cardTitle}>Your13</Text>
-                  <Text style={styles.cardText}>Curate your 13 signature tracks and find your musical twins</Text>
+                  <Text style={styles.cardText}>
+                    {dashboardState.isAuthenticated && dashboardState.progressCount > 0
+                      ? `${dashboardState.progressCount}/${dashboardState.requiredCount} signature tracks curated • Find your musical twins`
+                      : 'Curate your 13 signature tracks and find your musical twins'}
+                  </Text>
                   <Button
                     mode="contained"
                     style={styles.cardButton}

@@ -1,12 +1,79 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SafeAreaView, ScrollView, View, StyleSheet, Text, Switch, TouchableOpacity } from 'react-native';
 import { List, Divider } from 'react-native-paper';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from './firebaseConfig';
+import { createAsyncActionLock } from './utils/actionLockUtils';
+import { sanitizeNotificationPrefs } from './utils/notificationPrefsUtils';
 
 const NotificationSettings = ({ navigation }) => {
   const [emailNotifications, setEmailNotifications] = useState(false);
-  const [pushNotifications, setPushNotifications] = useState(false);
-  const [friendRequestsNotifications, setFriendRequestsNotifications] = useState(false);
-  const [mentionsCommentsNotifications, setMentionsCommentsNotifications] = useState(false);
+  const [pushNotifications, setPushNotifications] = useState(true);
+  const [prefs, setPrefs] = useState(() => sanitizeNotificationPrefs({}));
+  const isMountedRef = useRef(true);
+  const toggleLockRef = useRef(createAsyncActionLock());
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return () => { isMountedRef.current = false; };
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', uid));
+        if (!isMountedRef.current) return;
+        if (snap.exists()) {
+          const data = snap.data() || {};
+          const clean = sanitizeNotificationPrefs(data.notificationPrefs || data);
+          setPrefs(clean);
+          if (data.emailNotifications !== undefined) {
+            setEmailNotifications(Boolean(data.emailNotifications));
+          }
+          if (data.pushNotifications !== undefined) {
+            setPushNotifications(Boolean(data.pushNotifications));
+          }
+        }
+      } catch (err) {
+        if (err?.code !== 'permission-denied') {
+          console.warn('NotificationSettings load error:', err);
+        }
+      }
+    })();
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const persistNotificationUpdate = (patch) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    return toggleLockRef.current(async () => {
+      try {
+        await setDoc(doc(db, 'users', uid), patch, { merge: true });
+      } catch (err) {
+        if (err?.code !== 'permission-denied') {
+          console.warn('NotificationSettings save error:', err);
+        }
+      }
+    });
+  };
+
+  const handleToggleTopLevel = (field, nextVal) => {
+    const boolVal = Boolean(nextVal);
+    if (field === 'emailNotifications') setEmailNotifications(boolVal);
+    if (field === 'pushNotifications') setPushNotifications(boolVal);
+    persistNotificationUpdate({ [field]: boolVal });
+  };
+
+  const handleTogglePref = (key) => {
+    const nextPrefs = sanitizeNotificationPrefs({
+      ...prefs,
+      [key]: !prefs[key],
+    });
+    setPrefs(nextPrefs);
+    persistNotificationUpdate({ notificationPrefs: nextPrefs });
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -24,7 +91,7 @@ const NotificationSettings = ({ navigation }) => {
             <Text style={styles.itemText}>Email Notifications</Text>
             <Switch
               value={emailNotifications}
-              onValueChange={() => setEmailNotifications(!emailNotifications)}
+              onValueChange={(val) => handleToggleTopLevel('emailNotifications', val)}
               trackColor={{ false: "#767577", true: "#007AFF" }}
               thumbColor={emailNotifications ? "#007AFF" : "#f4f3f4"}
             />
@@ -38,7 +105,7 @@ const NotificationSettings = ({ navigation }) => {
             <Text style={styles.itemText}>Push Notifications</Text>
             <Switch
               value={pushNotifications}
-              onValueChange={() => setPushNotifications(!pushNotifications)}
+              onValueChange={(val) => handleToggleTopLevel('pushNotifications', val)}
               trackColor={{ false: "#767577", true: "#007AFF" }}
               thumbColor={pushNotifications ? "#007AFF" : "#f4f3f4"}
             />
@@ -51,10 +118,10 @@ const NotificationSettings = ({ navigation }) => {
           <View style={styles.item}>
             <Text style={styles.itemText}>Friend Requests Notifications</Text>
             <Switch
-              value={friendRequestsNotifications}
-              onValueChange={() => setFriendRequestsNotifications(!friendRequestsNotifications)}
+              value={prefs.friendRequests}
+              onValueChange={() => handleTogglePref('friendRequests')}
               trackColor={{ false: "#767577", true: "#007AFF" }}
-              thumbColor={friendRequestsNotifications ? "#007AFF" : "#f4f3f4"}
+              thumbColor={prefs.friendRequests ? "#007AFF" : "#f4f3f4"}
             />
           </View>
         </List.Section>
@@ -65,10 +132,10 @@ const NotificationSettings = ({ navigation }) => {
           <View style={styles.item}>
             <Text style={styles.itemText}>Mentions & Comments Notifications</Text>
             <Switch
-              value={mentionsCommentsNotifications}
-              onValueChange={() => setMentionsCommentsNotifications(!mentionsCommentsNotifications)}
+              value={prefs.chatMessages}
+              onValueChange={() => handleTogglePref('chatMessages')}
               trackColor={{ false: "#767577", true: "#007AFF" }}
-              thumbColor={mentionsCommentsNotifications ? "#007AFF" : "#f4f3f4"}
+              thumbColor={prefs.chatMessages ? "#007AFF" : "#f4f3f4"}
             />
           </View>
         </List.Section>

@@ -1,5 +1,5 @@
 // ChatScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   SafeAreaView,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
+  Alert,
 } from 'react-native';
 import { db, auth } from './firebaseConfig';
 import {
@@ -22,8 +23,11 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import { loadUserProfilePic } from './UploadProfilePicture';
+import { sendExpoPushNotification } from './HandlingFriends';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
+import { createAsyncActionLock } from './utils/actionLockUtils';
+import { validateOutgoingChatMessage, MAX_CHAT_MESSAGE_LENGTH } from './utils/chatMessageUtils';
 
 const DEFAULT_AVATAR =
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120';
@@ -35,6 +39,7 @@ const ChatScreen = ({ route, navigation }) => {
   const [userProfilePic, setUserProfilePic] = useState(DEFAULT_AVATAR);
   const [otherUserId, setOtherUserId] = useState(routeOtherId || null);
   const userId = auth.currentUser?.uid;
+  const sendLockRef = useRef(createAsyncActionLock());
 
   // 1. Dedicated real-time messages listener with deterministic teardown guard [BUG-004]
   useEffect(() => {
@@ -88,31 +93,39 @@ const ChatScreen = ({ route, navigation }) => {
     resolveParticipant();
   }, [chatId, routeOtherId, userId]);
 
-  const sendMessage = async () => {
-    if (!message.trim() || !chatId || !userId) return;
+  const sendMessage = () => {
+    const validation = validateOutgoingChatMessage({
+      text: message,
+      senderId: userId,
+      chatId,
+    });
+    if (!validation.ok) return;
 
-    const textToSend = message.trim();
-    setMessage('');
+    const textToSend = validation.payload.text;
 
-    if (otherUserId) {
-      sendExpoPushNotification(
-        otherUserId,
-        `New message from @${auth.currentUser?.displayName || 'Music Twin'}`,
-        textToSend,
-        { chatId }
-      );
-    }
+    return sendLockRef.current(async () => {
+      setMessage('');
 
-    try {
-      const messagesRef = collection(db, 'chats', chatId, 'messages');
-      await addDoc(messagesRef, {
-        text: textToSend,
-        timestamp: Date.now(),
-        userId,
-      });
-    } catch (error) {
-      console.error('Error sending message:', error);
-    }
+      if (otherUserId) {
+        sendExpoPushNotification(
+          otherUserId,
+          `New message from @${auth.currentUser?.displayName || 'Music Twin'}`,
+          textToSend,
+          { chatId }
+        );
+      }
+
+      try {
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+        await addDoc(messagesRef, {
+          text: textToSend,
+          timestamp: Date.now(),
+          userId,
+        });
+      } catch (error) {
+        console.error('Error sending message:', error);
+      }
+    });
   };
 
   const handleReportOrBlockUser = (targetUid, targetUsername, navigation) => {
@@ -230,6 +243,7 @@ const ChatScreen = ({ route, navigation }) => {
           placeholderTextColor="#718096"
           onChangeText={setMessage}
           value={message}
+          maxLength={MAX_CHAT_MESSAGE_LENGTH}
           onSubmitEditing={sendMessage}
         />
         <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
