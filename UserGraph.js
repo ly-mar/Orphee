@@ -12,6 +12,7 @@ import {
   PanResponder,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import Svg, {
   Circle,
@@ -25,10 +26,15 @@ import Svg, {
 } from 'react-native-svg';
 import { Text, Button } from 'react-native-paper';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { doc, getDoc, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, setDoc } from 'firebase/firestore';
 import { db, auth } from './firebaseConfig';
 import { sendFriendRequest } from './HandlingFriends';
-import { computeSimilarityMatrix } from './utils/algorithmUtils';
+import {
+  computeSimilarityMatrix,
+  deduplicateRankedUsers,
+  formatListenerDisplayName,
+} from './utils/algorithmUtils';
+import { openOrCreateDirectChat } from './utils/chatMessageUtils';
 import { computeRadialPosition, sanitizeGraphLayout } from './utils/graphLayoutUtils';
 
 export { computeRadialPosition, sanitizeGraphLayout };
@@ -139,6 +145,7 @@ function UserGraph({ route, navigation }) {
   const [hydratedNames, setHydratedNames] = useState(routeUsernames);
   const [hydratedImages, setHydratedImages] = useState({});
   const [hydratedUids, setHydratedUids] = useState({});
+  const [isHydratingNodes, setIsHydratingNodes] = useState(true);
   const [selectedNode, setSelectedNode] = useState(null);
   const [sharedDna, setSharedDna] = useState(null);
   const [loadingDna, setLoadingDna] = useState(false);
@@ -147,22 +154,48 @@ function UserGraph({ route, navigation }) {
   // Cross-platform Zoom & Pan state
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const panRef = useRef({ x: 0, y: 0 });
   const panStartRef = useRef({ x: 0, y: 0 });
 
-  // Hydrate any missing usernames or avatars from Firestore
+  const updatePan = (nextPan) => {
+    panRef.current = nextPan;
+    setPan(nextPan);
+  };
+
+  // Hydrate any missing usernames or avatars from Firestore before plotting
   useEffect(() => {
+    if (loadingRankedUsers) return;
     let isMounted = true;
+
     const hydrateNodes = async () => {
+      if (!rankedUsers || rankedUsers.length === 0) {
+        if (isMounted) setIsHydratingNodes(false);
+        return;
+      }
+
+      if (isMounted) setIsHydratingNodes(true);
       const names = { ...routeUsernames };
       const images = {};
       const uids = {};
       const statuses = {};
 
+      if (userId && userId !== 'current_user' && !names[userId]) {
+        try {
+          const selfSnap = await getDoc(doc(db, 'users', userId));
+          if (selfSnap.exists()) {
+            const selfData = selfSnap.data();
+            if (selfData.username || selfData.displayName) {
+              names[userId] = selfData.username || selfData.displayName;
+            }
+          }
+        } catch (_) {}
+      }
+
       for (const item of rankedUsers) {
         const key = item.uname || item.uid;
         if (!key) continue;
 
-        if (item.username && item.username !== 'User') {
+        if (item.username && item.username !== 'User' && !/^[A-Za-z0-9_-]{24,}$/.test(item.username)) {
           names[key] = item.username;
         }
         if (item.profileImageUrl) {
@@ -175,12 +208,13 @@ function UserGraph({ route, navigation }) {
           statuses[key] = item.friendStatus;
         }
 
-        if (!names[key] || !uids[key]) {
+        const needsNameResolution = !names[key] || /^[A-Za-z0-9_-]{24,}$/.test(names[key]);
+        if (needsNameResolution || !uids[key]) {
           try {
             const directSnap = await getDoc(doc(db, 'users', key));
             if (directSnap.exists()) {
               const d = directSnap.data();
-              names[key] = d.username || key;
+              names[key] = d.username || d.displayName || names[key] || key;
               uids[key] = directSnap.id;
               if (d.profileImageUrl) images[key] = d.profileImageUrl;
             } else {
@@ -188,12 +222,12 @@ function UserGraph({ route, navigation }) {
               const qSnap = await getDocs(q);
               if (!qSnap.empty) {
                 const d = qSnap.docs[0].data();
-                names[key] = d.username || key;
+                names[key] = d.username || d.displayName || key;
                 uids[key] = qSnap.docs[0].id;
                 if (d.profileImageUrl) images[key] = d.profileImageUrl;
               } else {
-                names[key] = key;
-                uids[key] = key;
+                names[key] = names[key] || key;
+                uids[key] = uids[key] || key;
               }
             }
           } catch (_) {
@@ -208,6 +242,7 @@ function UserGraph({ route, navigation }) {
         setHydratedImages(images);
         setHydratedUids(uids);
         setFriendStatusMap(statuses);
+        setIsHydratingNodes(false);
       }
     };
 
@@ -215,26 +250,23 @@ function UserGraph({ route, navigation }) {
     return () => {
       isMounted = false;
     };
-  }, [rankedUsers]);
+  }, [rankedUsers, loadingRankedUsers, userId]);
 
-  const currentUserDisplay =
-    hydratedNames[userId] || routeUsernames[userId] || 'You';
+  const currentUserDisplay = useMemo(() => {
+    const rawSelfName =
+      hydratedNames[userId] || routeUsernames[userId] || auth.currentUser?.displayName;
+    return rawSelfName ? formatListenerDisplayName(userId, rawSelfName) : 'You';
+  }, [hydratedNames, routeUsernames, userId]);
 
-  // Filter out the current user from peripheral nodes so "You" only sits at the center
+  // Deduplicate peers and filter out the current user so "You" only sits at the center
   const peerUsers = useMemo(() => {
-    return rankedUsers.filter((u) => {
-      const key = u.uname || u.uid;
-      if (!key) return false;
-      if (key === userId || key === 'current_user') return false;
-      if (hydratedUids[key] && hydratedUids[key] === userId) return false;
-      if (
-        currentUserDisplay !== 'You' &&
-        (hydratedNames[key] === currentUserDisplay || u.username === currentUserDisplay)
-      ) {
-        return false;
-      }
-      return true;
+    const deduped = deduplicateRankedUsers(rankedUsers, {
+      usernamesMap: hydratedNames,
+      userIdsMap: hydratedUids,
+      currentUserId: userId,
+      currentUsername: currentUserDisplay !== 'You' ? currentUserDisplay : null,
     });
+    return deduped.filter((u) => !u.isSelf);
   }, [rankedUsers, userId, hydratedUids, hydratedNames, currentUserDisplay]);
 
   // Compute deterministic radial coordinates with collision-free angular distribution
@@ -276,12 +308,13 @@ function UserGraph({ route, navigation }) {
       else if (pct < 20) ringColor = '#38BDF8';
 
       const displayUsername =
-        hydratedNames[key] || user.username || key;
+        user.displayName ||
+        formatListenerDisplayName(key, hydratedNames[key] || user.username);
 
       return {
         ...user,
         key,
-        uid: hydratedUids[key] || user.uid || key,
+        uid: user.resolvedUid || hydratedUids[key] || user.uid || key,
         username: displayUsername,
         profileImageUrl: hydratedImages[key] || user.profileImageUrl || null,
         totalScore: rawScore,
@@ -305,24 +338,31 @@ function UserGraph({ route, navigation }) {
         onMoveShouldSetPanResponder: (_, gestureState) =>
           Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6,
         onPanResponderGrant: () => {
-          panStartRef.current = { x: pan.x, y: pan.y };
+          panStartRef.current = { x: panRef.current.x, y: panRef.current.y };
         },
         onPanResponderMove: (_, gestureState) => {
-          const sensitivity = 1.2 / zoom;
-          setPan({
-            x: Math.max(-240, Math.min(240, panStartRef.current.x - gestureState.dx * sensitivity)),
-            y: Math.max(-240, Math.min(240, panStartRef.current.y - gestureState.dy * sensitivity)),
+          const sensitivity = 1.15 / zoom;
+          const maxPanOffset = Math.max(280, Math.round(320 * zoom));
+          updatePan({
+            x: Math.max(
+              -maxPanOffset,
+              Math.min(maxPanOffset, panStartRef.current.x - gestureState.dx * sensitivity)
+            ),
+            y: Math.max(
+              -maxPanOffset,
+              Math.min(maxPanOffset, panStartRef.current.y - gestureState.dy * sensitivity)
+            ),
           });
         },
       }),
-    [pan, zoom]
+    [zoom]
   );
 
   const handleZoomIn = () => setZoom((z) => Math.min(2.6, Number((z + 0.3).toFixed(2))));
   const handleZoomOut = () => setZoom((z) => Math.max(0.65, Number((z - 0.3).toFixed(2))));
   const handleResetView = () => {
     setZoom(1);
-    setPan({ x: 0, y: 0 });
+    updatePan({ x: 0, y: 0 });
   };
 
   // Inspect a node and compute real shared musical DNA from Firestore
@@ -413,36 +453,33 @@ function UserGraph({ route, navigation }) {
       return;
     }
     try {
-      const chatParticipants = [currentUid, node.uid].sort();
-      const compositeChatId = `${chatParticipants[0]}_${chatParticipants[1]}`;
-      const chatsRef = collection(db, 'chats');
-      const q = query(chatsRef, where('chatId', '==', compositeChatId));
-      const snap = await getDocs(q);
-
-      let finalDocId = compositeChatId;
-      if (snap.empty) {
-        const created = await addDoc(chatsRef, {
-          chatId: compositeChatId,
-          participants: chatParticipants,
-          createdAt: Date.now(),
-        });
-        finalDocId = created.id;
-      } else {
-        finalDocId = snap.docs[0].id;
-      }
+      const chatPayload = await openOrCreateDirectChat({
+        currentUserId: currentUid,
+        targetUid: node.uid,
+        targetUsername: node.username || 'Listener',
+        docFn: doc,
+        getDocFn: getDoc,
+        setDocFn: setDoc,
+        collectionFn: collection,
+        queryFn: query,
+        whereFn: where,
+        getDocsFn: getDocs,
+        db,
+      });
 
       setSelectedNode(null);
       navigation.navigate('ChatScreen', {
-        chatId: finalDocId,
-        username: node.username,
+        chatId: chatPayload.chatId,
+        otherUserId: chatPayload.otherUserId,
+        username: chatPayload.username,
       });
-    } catch (_) {
-      setSelectedNode(null);
-      navigation.navigate('UserProfile', { userId: node.uid });
+    } catch (err) {
+      console.error('Error starting chat from UserGraph:', err);
+      Alert.alert('Unable to Start Chat', 'Please try again in a moment.');
     }
   };
 
-  if (loadingRankedUsers) {
+  if (loadingRankedUsers || (rankedUsers.length > 0 && isHydratingNodes)) {
     return (
       <SafeAreaView style={styles.emptyContainer}>
         <ActivityIndicator size="large" color="#FF8C00" style={{ marginBottom: 14 }} />
@@ -501,12 +538,24 @@ function UserGraph({ route, navigation }) {
       </View>
 
       {/* Radar Viewport */}
-      <View style={styles.radarViewport} {...panResponder.panHandlers}>
+      <View
+        style={[
+          styles.radarViewport,
+          Platform.OS === 'web' && {
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            touchAction: 'none',
+            cursor: 'grab',
+          },
+        ]}
+        {...panResponder.panHandlers}
+      >
         <Svg
           width="100%"
           height="100%"
           viewBox={viewBoxString}
           preserveAspectRatio="xMidYMid meet"
+          style={Platform.OS === 'web' ? { userSelect: 'none', WebkitUserSelect: 'none' } : undefined}
         >
           <Defs>
             <RadialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
@@ -1032,18 +1081,18 @@ const styles = StyleSheet.create({
   },
   zoomControls: {
     position: 'absolute',
-    right: 16,
-    bottom: 16,
+    right: 12,
+    bottom: 12,
     backgroundColor: 'rgba(19, 23, 34, 0.92)',
     borderRadius: 12,
-    padding: 6,
+    padding: 5,
     borderWidth: 1,
     borderColor: '#262D3D',
-    gap: 8,
+    gap: 6,
   },
   zoomBtn: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
     borderRadius: 9,
     backgroundColor: '#1E2433',
     alignItems: 'center',
@@ -1054,15 +1103,16 @@ const styles = StyleSheet.create({
   },
   legendOverlay: {
     position: 'absolute',
-    left: 14,
-    bottom: 16,
-    backgroundColor: 'rgba(15, 18, 26, 0.9)',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    left: 12,
+    bottom: 12,
+    backgroundColor: 'rgba(15, 18, 26, 0.88)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#222836',
-    gap: 5,
+    gap: 4,
+    maxWidth: 165,
   },
   legendItem: {
     flexDirection: 'row',

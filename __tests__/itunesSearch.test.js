@@ -1,5 +1,9 @@
 // __tests__/itunesSearch.test.js
-import { createItunesSearchClient, sanitizeItunesTrack } from '../utils/itunesSearchUtils';
+import {
+  createItunesSearchClient,
+  sanitizeItunesTrack,
+  deduplicateTracks,
+} from '../utils/itunesSearchUtils';
 
 describe('iTunes Search API Resilience [BUG-014]', () => {
   test('properly URL-encodes special characters, accents, and ampersands', async () => {
@@ -59,6 +63,18 @@ describe('iTunes Search API Resilience [BUG-014]', () => {
     const client = createItunesSearchClient({ fetchFn: mockFetch });
     const results = await client.search('test');
     expect(results).toEqual([]);
+  });
+
+  test('deduplicateTracks collapses duplicate trackIds and identical title+artist pairs [VR-006]', () => {
+    const cleaned = deduplicateTracks([
+      { trackId: '10', trackName: 'Kill Bill', artistName: 'SZA' },
+      { trackId: '10', trackName: 'Kill Bill', artistName: 'SZA' },
+      { trackId: '11', trackName: '  kill bill ', artistName: 'sza' },
+      { trackId: '12', trackName: 'Snooze', artistName: 'SZA' },
+    ]);
+
+    expect(cleaned).toHaveLength(2);
+    expect(cleaned.map((t) => t.trackId)).toEqual(['10', '12']);
   });
 });
 

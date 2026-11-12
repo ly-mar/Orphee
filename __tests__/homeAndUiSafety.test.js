@@ -32,6 +32,24 @@ describe('HomeScreen Dashboard State Resilience [BUG-017]', () => {
     expect(state.isLocked).toBe(true);
     expect(state.progressCount).toBe(1);
   });
+
+  test('accepts playlists/{uid} as 3rd argument and resolves username + unlocked state [VR-004]', () => {
+    const playlistSongs = Array.from({ length: 13 }, (_, idx) => ({
+      trackId: `t-${idx}`,
+      trackName: `Track ${idx}`,
+      artistName: `Artist ${idx}`,
+    }));
+    const state = deriveHomeDashboardState(
+      { uid: 'u-2', displayName: 'Fallback' },
+      { username: 'Sigma' },
+      { songs: playlistSongs }
+    );
+
+    expect(state.displayName).toBe('Sigma');
+    expect(state.your13).toHaveLength(13);
+    expect(state.progressCount).toBe(13);
+    expect(state.isLocked).toBe(false);
+  });
 });
 
 describe('NotificationSettings Preference Normalization [BUG-018]', () => {

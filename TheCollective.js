@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0D0E12',
   },
   flatListContainer: {
-    paddingBottom: 80,
+    paddingBottom: 116, // Clears floating bottom Taskbar dock
   },
   headerText: {
     fontSize: 26,

@@ -12,17 +12,36 @@ import backgroundImage from './assets/bri-tucker-AJD3XJlvBZ8-unsplash.jpg';
 
 function HomeScreen({ navigation }) {
   const [currentUser, setCurrentUser] = useState(auth.currentUser || null);
+  const [userProfileDoc, setUserProfileDoc] = useState(null);
   const [userPlaylistDoc, setUserPlaylistDoc] = useState(null);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user || null);
       if (!user) {
+        setUserProfileDoc(null);
         setUserPlaylistDoc(null);
       }
     });
     return () => unsubscribeAuth();
   }, []);
+
+  useEffect(() => {
+    const uid = currentUser?.uid;
+    return subscribeSafeSnapshot({
+      isReady: Boolean(uid),
+      buildQuery: () => doc(db, 'users', uid),
+      onSnapshotFn: onSnapshot,
+      onNext: (snapshot) => {
+        setUserProfileDoc(snapshot && snapshot.exists() ? snapshot.data() : null);
+      },
+      onError: (err) => {
+        if (err?.code !== 'permission-denied') {
+          console.warn('HomeScreen profile listener error:', err);
+        }
+      },
+    });
+  }, [currentUser?.uid]);
 
   useEffect(() => {
     const uid = currentUser?.uid;
@@ -41,7 +60,7 @@ function HomeScreen({ navigation }) {
     });
   }, [currentUser?.uid]);
 
-  const dashboardState = deriveHomeDashboardState(currentUser, userPlaylistDoc);
+  const dashboardState = deriveHomeDashboardState(currentUser, userProfileDoc, userPlaylistDoc);
 
   return (
     <ImageBackground source={backgroundImage} style={styles.backgroundImage}>
@@ -177,6 +196,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     paddingVertical: 16,
+    paddingBottom: 116, // Clears floating bottom Taskbar dock
     paddingHorizontal: 16,
     alignItems: 'center',
   },

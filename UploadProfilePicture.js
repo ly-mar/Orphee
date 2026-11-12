@@ -12,8 +12,8 @@ import {
 import { Text } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db, storage } from './firebaseConfig';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { collection, addDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { Feather } from '@expo/vector-icons';
 import { compressImageForUpload } from './ProfileScreen';
 import {
@@ -22,6 +22,20 @@ import {
 } from './utils/avatarUtils';
 
 export { uploadAvatarWithFallback, MAX_FIRESTORE_DATA_URL_BYTES };
+
+export async function deleteImage(docId, imageUrl) {
+  if (docId) {
+    await deleteDoc(doc(db, 'images', docId));
+  }
+  if (imageUrl && typeof imageUrl === 'string' && imageUrl.includes('firebasestorage')) {
+    try {
+      const storageRef = ref(storage, imageUrl);
+      await deleteObject(storageRef);
+    } catch (_) {
+      // Ignore already-deleted or external URL errors
+    }
+  }
+}
 
 export default function UploadProfilePicture({ navigation }) {
   const [selectedUri, setSelectedUri] = useState(null);

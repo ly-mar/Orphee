@@ -6,6 +6,8 @@ import {
     computePairwiseAffinity,
     computeSimilarityMatrix,
     sanitizeCompatibilityScore,
+    formatListenerDisplayName,
+    deduplicateRankedUsers,
 } from '../utils/algorithmUtils';
 import { clampProgressValue } from '../CustomProgressBar';
 
@@ -108,5 +110,32 @@ describe('Sonic Twins Compatibility & Progress Bar NaN Guard [BUG-010]', () => {
         expect(sanitizeCompatibilityScore(-10)).toBe(0);
         expect(sanitizeCompatibilityScore(150)).toBe(100);
         expect(sanitizeCompatibilityScore(85.46)).toBe(85.5);
+    });
+
+    test('formatListenerDisplayName and deduplicateRankedUsers hide raw UIDs and collapse duplicate peers [VR-006]', () => {
+        expect(formatListenerDisplayName('mock_bob')).toBe('Bob');
+        expect(formatListenerDisplayName('LKp4x8v9QzR2sT1wY6nB3mJ5kC7d')).toBe('Listener');
+        expect(formatListenerDisplayName('u1', 'Sigma')).toBe('Sigma');
+
+        const deduped = deduplicateRankedUsers(
+            [
+                { uname: 'uid_alpha_1', username: 'Alpha', totalScore: 0.72 },
+                { uname: 'mock_alpha', username: 'alpha', totalScore: 0.85 },
+                { uname: 'uid_me', username: 'Sigma', totalScore: 1.0 },
+                { uname: 'mock_bob', totalScore: 0.4 },
+            ],
+            {
+                usernamesMap: { uid_alpha_1: 'Alpha', mock_alpha: 'Alpha', uid_me: 'Sigma' },
+                userIdsMap: { uid_alpha_1: 'uid_alpha_real', mock_alpha: 'uid_alpha_real', uid_me: 'uid_me' },
+                currentUserId: 'uid_me',
+                currentUsername: 'Sigma',
+            }
+        );
+
+        const peers = deduped.filter((u) => !u.isSelf);
+        expect(peers).toHaveLength(2);
+        expect(peers[0].displayName).toBe('Alpha');
+        expect(peers[0].totalScore).toBe(0.85);
+        expect(peers[1].displayName).toBe('Bob');
     });
 });

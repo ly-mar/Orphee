@@ -15,15 +15,15 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import { Audio } from 'expo-av';
 import { db, auth } from './firebaseConfig';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
-import { normalizeTrack, getHighResImage } from './services/musicApi';
+import { normalizeTrack, getHighResImage, searchMusic } from './services/musicApi';
 import { aggregateCommunity13Charts } from './utils/chartUtils';
 import { normalizeYour13List } from './utils/playlistUtils';
-import Taskbar from './Taskbar';
+import { createAudioPreviewController, resolveFreshPreviewUrl } from './audioPreviewController';
+import { showNonBlockingNotice } from './crossPlatformAlert';
 import backgroundImage from './assets/gabriel-bassino-zEawlLdVloo-unsplash.jpg';
 
 // Curated seed community playlists used when Firestore collection is empty or restricted
@@ -158,67 +158,85 @@ const RankedMusicList = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Audio preview state
-  const soundRef = useRef(null);
+  // Audio preview state via shared controller [VR-022]
+  const audioControllerRef = useRef(null);
+  const resolvedPreviewCacheRef = useRef(new Map());
   const [playingTrackId, setPlayingTrackId] = useState(null);
   const [loadingTrackId, setLoadingTrackId] = useState(null);
 
+  if (!audioControllerRef.current) {
+    audioControllerRef.current = createAudioPreviewController({
+      onStatusChange: (status) => {
+        if (status?.didJustFinish) {
+          setPlayingTrackId(null);
+          setLoadingTrackId(null);
+        }
+      },
+      onError: (msg) => {
+        setPlayingTrackId(null);
+        setLoadingTrackId(null);
+        showNonBlockingNotice('Preview Unavailable', msg || 'Could not play 30-second preview.');
+      },
+    });
+  }
+
   const stopAndUnloadPreview = useCallback(async () => {
-    if (soundRef.current) {
-      try {
-        await soundRef.current.stopAsync();
-      } catch (_) { }
-      try {
-        await soundRef.current.unloadAsync();
-      } catch (_) { }
-      soundRef.current = null;
-    }
+    await audioControllerRef.current?.stop?.();
     setPlayingTrackId(null);
     setLoadingTrackId(null);
   }, []);
 
   useEffect(() => {
-    return () => {
+    const unsubscribeBlur = navigation?.addListener?.('blur', () => {
       stopAndUnloadPreview();
+    });
+    return () => {
+      unsubscribeBlur?.();
+      audioControllerRef.current?.dispose?.();
     };
-  }, [stopAndUnloadPreview]);
+  }, [navigation, stopAndUnloadPreview]);
 
   const handleTogglePreview = async (song) => {
-    if (!song.previewUrl) {
-      Alert.alert(
-        'Preview Unavailable',
-        'No 30-second audio preview found for this track. Tap the song to open details.',
-        [{ text: 'Open Details', onPress: () => navigation.navigate('SongDetails', { song }) }, { text: 'Cancel' }]
-      );
+    const trackKey = song?.trackId || song?.id || `${song?.trackName || ''}::${song?.artistName || ''}`;
+
+    if (playingTrackId === trackKey) {
+      await stopAndUnloadPreview();
       return;
     }
 
+    await stopAndUnloadPreview();
+    setLoadingTrackId(trackKey);
+
     try {
-      if (playingTrackId === song.trackId) {
-        await stopAndUnloadPreview();
-        return;
+      const cachedUrl = resolvedPreviewCacheRef.current.get(String(trackKey));
+      const initialUrl = cachedUrl || song?.previewUrl;
+
+      let started = false;
+      if (initialUrl) {
+        started = await audioControllerRef.current.play(initialUrl, { silentError: true });
       }
 
-      await stopAndUnloadPreview();
-      setLoadingTrackId(song.trackId);
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: song.previewUrl },
-        { shouldPlay: true },
-        (status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            setPlayingTrackId(null);
-          }
+      // If cached/stored previewUrl is missing or expired, resolve a fresh 30s iTunes preview URL
+      if (!started) {
+        const freshUrl = await resolveFreshPreviewUrl(song, searchMusic);
+        if (freshUrl) {
+          resolvedPreviewCacheRef.current.set(String(trackKey), freshUrl);
+          started = await audioControllerRef.current.play(freshUrl, { silentError: false });
+        } else {
+          showNonBlockingNotice(
+            'Preview Unavailable',
+            'No 30-second preview stream is available for this track right now.'
+          );
         }
-      );
+      }
 
-      soundRef.current = sound;
       setLoadingTrackId(null);
-      setPlayingTrackId(song.trackId);
+      setPlayingTrackId(started ? trackKey : null);
     } catch (error) {
       console.warn('Playback error for preview:', error);
       setLoadingTrackId(null);
       setPlayingTrackId(null);
+      showNonBlockingNotice('Preview Unavailable', 'Could not play preview right now.');
     }
   };
 
@@ -359,8 +377,9 @@ const RankedMusicList = ({ navigation }) => {
       return null;
     }
 
-    const isPlaying = playingTrackId === topSong.trackId;
-    const isLoading = loadingTrackId === topSong.trackId;
+    const topSongKey = topSong?.trackId || topSong?.id || `${topSong?.trackName || ''}::${topSong?.artistName || ''}`;
+    const isPlaying = playingTrackId === topSongKey;
+    const isLoading = loadingTrackId === topSongKey;
 
     return (
       <View style={styles.spotlightWrapper}>
@@ -400,6 +419,7 @@ const RankedMusicList = ({ navigation }) => {
               <TouchableOpacity
                 style={[styles.previewPill, isPlaying && styles.previewPillPlaying]}
                 onPress={() => handleTogglePreview(topSong)}
+                accessibilityLabel={isPlaying ? 'Pause 30 second preview' : 'Play 30 second preview'}
               >
                 {isLoading ? (
                   <ActivityIndicator size="small" color="#000" />
@@ -423,8 +443,9 @@ const RankedMusicList = ({ navigation }) => {
   };
 
   const renderSongItem = ({ item, index }) => {
-    const isPlaying = playingTrackId === item.trackId;
-    const isLoading = loadingTrackId === item.trackId;
+    const itemTrackKey = item?.trackId || item?.id || `${item?.trackName || ''}::${item?.artistName || ''}`;
+    const isPlaying = playingTrackId === itemTrackKey;
+    const isLoading = loadingTrackId === itemTrackKey;
     const badgeColor = getRankBadgeColor(index);
     const coverUri = item.artworkUrl100 || item.imageUrl;
 
@@ -465,10 +486,11 @@ const RankedMusicList = ({ navigation }) => {
             </Text>
           </View>
 
-          {item.previewUrl ? (
+          {(item.previewUrl || (item.trackName && item.artistName)) ? (
             <TouchableOpacity
               style={[styles.audioBtn, isPlaying && styles.audioBtnPlaying]}
               onPress={() => handleTogglePreview(item)}
+              accessibilityLabel={isPlaying ? 'Pause preview' : 'Play 30 second preview'}
             >
               {isLoading ? (
                 <ActivityIndicator size="small" color="#FF8C00" />
@@ -694,8 +716,6 @@ const RankedMusicList = ({ navigation }) => {
             }
           />
         )}
-
-        <Taskbar />
       </SafeAreaView>
     </ImageBackground>
   );

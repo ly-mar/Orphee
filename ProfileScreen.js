@@ -29,18 +29,44 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
 import { FontAwesome5, Feather, Ionicons } from '@expo/vector-icons';
 import moment from 'moment';
 import Taskbar from './Taskbar';
+import { createAudioPreviewController } from './audioPreviewController';
+import { normalizeYour13List } from './utils/playlistUtils';
+import { normalizeAndSortMediaList } from './utils/avatarUtils';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
+const DEFAULT_AVATAR_BG =
+  'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80';
+
 const getHighResImage = (url) => {
   if (!url || typeof url !== 'string') {
-    return 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80';
+    return null;
   }
   return url.replace('100x100bb', '600x600bb').replace('100x100', '600x600');
+};
+
+const normalizeGenreTag = (rawGenre) => {
+  const cleaned = String(rawGenre || '').trim();
+  if (!cleaned || /^music$/i.test(cleaned)) return '';
+  if (/^(r&b|rnb|soul|neo-soul|contemporary r&b)/i.test(cleaned) || /r&b\s*\/\s*soul/i.test(cleaned)) {
+    return 'R&B/Soul';
+  }
+  if (/hip[\s-]?hop|rap/i.test(cleaned)) {
+    return 'Hip-Hop';
+  }
+  if (/k[\s-]?pop/i.test(cleaned)) {
+    return 'K-Pop';
+  }
+  if (/afro/i.test(cleaned)) {
+    return 'Afrobeats';
+  }
+  if (/kompa|konpa/i.test(cleaned)) {
+    return 'Kompa';
+  }
+  return cleaned;
 };
 
 /**
@@ -132,30 +158,41 @@ function ProfileScreen({ navigation }) {
   const [deletingMemoirId, setDeletingMemoirId] = useState(null);
 
   // Audio Preview State
-  const soundRef = useRef(null);
+  const audioControllerRef = useRef(null);
   const [playingTrackId, setPlayingTrackId] = useState(null);
+  const hasLoadedOnceRef = useRef(false);
 
   const carouselRef = useRef(null);
   const userId = auth.currentUser?.uid;
 
+  if (!audioControllerRef.current) {
+    audioControllerRef.current = createAudioPreviewController({
+      onStatusChange: (status) => {
+        if (status?.didJustFinish) {
+          setPlayingTrackId(null);
+        }
+      },
+      onError: (msg) => {
+        setPlayingTrackId(null);
+        Alert.alert('Preview Unavailable', msg || 'Could not play preview for this track.');
+      },
+    });
+  }
+
   const stopAudio = useCallback(async () => {
-    if (soundRef.current) {
-      try {
-        await soundRef.current.stopAsync();
-      } catch (_) { }
-      try {
-        await soundRef.current.unloadAsync();
-      } catch (_) { }
-      soundRef.current = null;
-    }
+    await audioControllerRef.current?.stop?.();
     setPlayingTrackId(null);
   }, []);
 
   useEffect(() => {
-    return () => {
+    const unsubscribeBlur = navigation?.addListener?.('blur', () => {
       stopAudio();
+    });
+    return () => {
+      unsubscribeBlur?.();
+      audioControllerRef.current?.dispose?.();
     };
-  }, [stopAudio]);
+  }, [navigation, stopAudio]);
 
   const handleTogglePreview = async (track) => {
     const previewUrl = track?.previewUrl || track?.audioUrl;
@@ -166,30 +203,19 @@ function ProfileScreen({ navigation }) {
       return;
     }
 
-    try {
-      if (playingTrackId === trackKey) {
-        await stopAudio();
-        return;
-      }
+    if (playingTrackId === trackKey) {
       await stopAudio();
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: previewUrl },
-        { shouldPlay: true },
-        (status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            setPlayingTrackId(null);
-          }
-        }
-      );
-      soundRef.current = sound;
-      setPlayingTrackId(trackKey);
-    } catch (err) {
-      console.error('Audio preview error:', err);
+      return;
+    }
+
+    setPlayingTrackId(trackKey);
+    const started = await audioControllerRef.current.play(previewUrl);
+    if (!started) {
       setPlayingTrackId(null);
     }
   };
 
-  const fetchUserData = useCallback(async () => {
+  const fetchUserData = useCallback(async ({ silent = false } = {}) => {
     const currentUid = auth.currentUser?.uid;
     if (!currentUid) {
       setLoading(false);
@@ -197,7 +223,9 @@ function ProfileScreen({ navigation }) {
     }
 
     try {
-      setLoading(true);
+      if (!silent && !hasLoadedOnceRef.current) {
+        setLoading(true);
+      }
       const userDocRef = doc(db, 'users', currentUid);
       const userDocSnap = await getDoc(userDocRef);
 
@@ -212,20 +240,20 @@ function ProfileScreen({ navigation }) {
         userData = { ...userData, ...userDocSnap.data() };
       }
 
-      // 1. Resolve Avatar & Media List (with getDocs properly imported)
+      // 1. Resolve Avatar & Media List sorted by newest first
       let resolvedAvatar = userData.profileImageUrl || '';
       const imgQuery = query(collection(db, 'images'), where('userId', '==', currentUid));
       const imgSnapshot = await getDocs(imgQuery);
-      const uploadedImages = imgSnapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((item) => item.imageUrl);
+      const uploadedImages = normalizeAndSortMediaList(
+        imgSnapshot.docs.map((d) => ({ id: d.id, ...d.data() }))
+      ).map((item) => ({ ...item, imageUrl: item.resolvedUrl }));
 
       if (!resolvedAvatar && uploadedImages.length > 0) {
-        resolvedAvatar = uploadedImages[0].imageUrl;
+        resolvedAvatar = uploadedImages[0].resolvedUrl;
       }
       setMediaList(
         resolvedAvatar
-          ? [{ id: 'primary', imageUrl: resolvedAvatar }, ...uploadedImages]
+          ? [{ id: 'primary', imageUrl: resolvedAvatar, resolvedUrl: resolvedAvatar }, ...uploadedImages]
           : uploadedImages
       );
       setUserInfo({ ...userData, profileImageUrl: resolvedAvatar });
@@ -283,7 +311,7 @@ function ProfileScreen({ navigation }) {
         }
       }
 
-      setSelectedSongs(loadedSongs.slice(0, 13));
+      setSelectedSongs(normalizeYour13List(loadedSongs).slice(0, 13));
 
       // 3. Fetch Memoirs by userId AND username to ensure complete history
       const memoirsMap = new Map();
@@ -372,10 +400,20 @@ function ProfileScreen({ navigation }) {
       });
       setMemoirs(sortedMemoirs);
 
-      // 4. Fetch Friends & Unread Notifications Count
+      // 4. Fetch Friends (aligned with FriendsScreen requests doc) & Unread Notifications Count
       try {
-        const friendsSnap = await getDocs(collection(db, 'users', currentUid, 'friends'));
-        setFriendsCount(friendsSnap.size);
+        const reqSnap = await getDoc(doc(db, 'requests', currentUid));
+        if (reqSnap.exists()) {
+          const reqData = reqSnap.data() || {};
+          const uniqueFriendIds = new Set([
+            ...Object.keys(reqData.followers || {}),
+            ...Object.keys(reqData.following || {}),
+          ]);
+          setFriendsCount(uniqueFriendIds.size);
+        } else {
+          const friendsSnap = await getDocs(collection(db, 'users', currentUid, 'friends'));
+          setFriendsCount(friendsSnap.size);
+        }
       } catch (_) { }
 
       try {
@@ -389,19 +427,22 @@ function ProfileScreen({ navigation }) {
       } catch (_) { }
     } catch (error) {
       console.error('Error fetching profile data:', error);
-      Alert.alert(
-        'Profile Sync Notice',
-        'Some profile details could not be refreshed. Please check your connection.'
-      );
+      if (!silent) {
+        Alert.alert(
+          'Profile Sync Notice',
+          'Some profile details could not be refreshed. Please check your connection.'
+        );
+      }
     } finally {
+      hasLoadedOnceRef.current = true;
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchUserData();
+    fetchUserData({ silent: false });
     const unsubscribe = navigation?.addListener?.('focus', () => {
-      fetchUserData();
+      fetchUserData({ silent: true });
     });
     return unsubscribe;
   }, [fetchUserData, navigation]);
@@ -535,7 +576,7 @@ function ProfileScreen({ navigation }) {
     }
   };
 
-  const handleDeleteMemoir = async (memoirId) => {
+  const executeDeleteMemoir = async (memoirId) => {
     if (!memoirId) return;
     try {
       setDeletingMemoirId(memoirId);
@@ -574,6 +615,22 @@ function ProfileScreen({ navigation }) {
     }
   };
 
+  const handleDeleteMemoir = (memoirId) => {
+    if (!memoirId) return;
+    Alert.alert(
+      'Delete Song Memoir?',
+      'This will permanently remove this memoir from your profile.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => executeDeleteMemoir(memoirId),
+        },
+      ]
+    );
+  };
+
   const formatMemoirDate = (rawTimestamp) => {
     if (!rawTimestamp) return 'Recently logged';
     if (rawTimestamp?.seconds) {
@@ -586,25 +643,31 @@ function ProfileScreen({ navigation }) {
       : 'Recently logged';
   };
 
-  // Dynamic Genre Tags derived from User's 13 Songs
+  // Preserve original #1..#13 slot rank even when filtered by genre
+  const rankedSongs = useMemo(
+    () => selectedSongs.map((song, idx) => ({ ...song, slotRank: idx + 1 })),
+    [selectedSongs]
+  );
+
+  // Consolidated Genre Tags derived from User's 13 Songs
   const genreTags = useMemo(() => {
     const counts = {};
-    selectedSongs.forEach((song) => {
-      const genre = song?.primaryGenreName || song?.genre;
-      if (genre && genre !== 'Music') {
+    rankedSongs.forEach((song) => {
+      const genre = normalizeGenreTag(song?.primaryGenreName || song?.genre);
+      if (genre) {
         counts[genre] = (counts[genre] || 0) + 1;
       }
     });
     const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
     return sorted.length > 0 ? sorted.slice(0, 5) : ['R&B/Soul', 'Hip-Hop', 'Kompa', 'Curator'];
-  }, [selectedSongs]);
+  }, [rankedSongs]);
 
   const filteredSongs = useMemo(() => {
-    if (!activeGenreFilter) return selectedSongs;
-    return selectedSongs.filter(
-      (s) => (s.primaryGenreName || s.genre) === activeGenreFilter
+    if (!activeGenreFilter) return rankedSongs;
+    return rankedSongs.filter(
+      (s) => normalizeGenreTag(s.primaryGenreName || s.genre) === activeGenreFilter
     );
-  }, [selectedSongs, activeGenreFilter]);
+  }, [rankedSongs, activeGenreFilter]);
 
   const scrollCarousel = (direction) => {
     const nextIndex = Math.max(
@@ -623,9 +686,12 @@ function ProfileScreen({ navigation }) {
   const avatarUri =
     userInfo?.profileImageUrl ||
     mediaList[0]?.imageUrl ||
-    getHighResImage(selectedSongs[0]?.artworkUrl100 || selectedSongs[0]?.imageUrl);
+    getHighResImage(selectedSongs[0]?.artworkUrl100 || selectedSongs[0]?.imageUrl) ||
+    DEFAULT_AVATAR_BG;
 
-  const featuredTrack = selectedSongs[0] || null;
+  const displayNameLabel = userInfo?.displayName || userInfo?.username || 'Sigma';
+  const featuredTrack = rankedSongs[0] || null;
+  const featuredTrackArt = getHighResImage(featuredTrack?.artworkUrl100 || featuredTrack?.imageUrl);
   const latestMemoir = memoirs[0] || null;
 
   if (loading) {
@@ -647,8 +713,9 @@ function ProfileScreen({ navigation }) {
         <View style={styles.topUtilityHeader}>
           <TouchableOpacity
             style={styles.topMiniAvatarWrap}
-            onPress={handlePickAndUploadAvatar}
+            onPress={() => navigation.navigate('UploadProfilePicture')}
             activeOpacity={0.85}
+            accessibilityLabel="Manage profile photos"
           >
             <Image source={{ uri: avatarUri }} style={styles.topMiniAvatar} />
             <View style={styles.cameraMiniBadge}>
@@ -660,6 +727,7 @@ function ProfileScreen({ navigation }) {
             <TouchableOpacity
               style={styles.glassCircleBtn}
               onPress={() => navigation.navigate('UserSearchScreen')}
+              accessibilityLabel="Search users"
             >
               <Feather name="search" size={18} color="#FFFFFF" />
             </TouchableOpacity>
@@ -667,6 +735,7 @@ function ProfileScreen({ navigation }) {
             <TouchableOpacity
               style={styles.glassCircleBtn}
               onPress={() => navigation.navigate('NotifPage')}
+              accessibilityLabel="Notifications"
             >
               <Feather name="bell" size={18} color="#FFFFFF" />
               {unreadCount > 0 && (
@@ -681,6 +750,7 @@ function ProfileScreen({ navigation }) {
             <TouchableOpacity
               style={styles.glassCircleBtn}
               onPress={() => navigation.navigate('MainChatScreen')}
+              accessibilityLabel="Messages"
             >
               <Feather name="message-circle" size={18} color="#FFFFFF" />
             </TouchableOpacity>
@@ -688,6 +758,7 @@ function ProfileScreen({ navigation }) {
             <TouchableOpacity
               style={styles.glassCircleBtn}
               onPress={() => navigation.navigate('SettingsScreen')}
+              accessibilityLabel="Settings"
             >
               <Feather name="settings" size={18} color="#FFFFFF" />
             </TouchableOpacity>
@@ -696,7 +767,7 @@ function ProfileScreen({ navigation }) {
 
         {/* GREETING & CHARTREUSE PILL TABS (Design 3: image_74650d.jpg) */}
         <View style={styles.greetingSection}>
-          <Text style={styles.greetingTitle}>Hi, {userInfo?.username || 'Sigma'}</Text>
+          <Text style={styles.greetingTitle}>Hi, {displayNameLabel}</Text>
 
           <ScrollView
             horizontal
@@ -757,8 +828,9 @@ function ProfileScreen({ navigation }) {
             <TouchableOpacity
               style={styles.categoryPill}
               onPress={() => navigation.navigate('RankedMusicList')}
+              accessibilityLabel="Explore Community Top Charts"
             >
-              <Text style={styles.categoryPillText}>Top Charts</Text>
+              <Text style={styles.categoryPillText}>Top Charts →</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -777,14 +849,10 @@ function ProfileScreen({ navigation }) {
             <View style={styles.heroTopOverlayBar}>
               <TouchableOpacity
                 style={styles.heroCircleIconBtn}
-                onPress={handlePickAndUploadAvatar}
-                disabled={uploading}
+                onPress={() => navigation.navigate('UploadProfilePicture')}
+                accessibilityLabel="Upload profile photo"
               >
-                {uploading ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Feather name="camera" size={15} color="#FFFFFF" />
-                )}
+                <Feather name="camera" size={15} color="#FFFFFF" />
               </TouchableOpacity>
 
               <Text style={styles.heroHandleTopText}>
@@ -806,7 +874,7 @@ function ProfileScreen({ navigation }) {
               <View style={styles.sheetHeaderRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.sheetDisplayName}>
-                    {userInfo?.username || 'Sigma'}
+                    {displayNameLabel}
                   </Text>
                   <Text style={styles.sheetHandleSub}>
                     @{(userInfo?.username || 'sigma').toLowerCase()}
@@ -817,6 +885,7 @@ function ProfileScreen({ navigation }) {
                   <TouchableOpacity
                     style={styles.iridescentStarCircle}
                     onPress={() => navigation.navigate('UserGraph')}
+                    accessibilityLabel="Open Sonic Affinity Radar"
                   >
                     <Ionicons name="sparkles" size={16} color="#FFFFFF" />
                   </TouchableOpacity>
@@ -824,6 +893,7 @@ function ProfileScreen({ navigation }) {
                   <TouchableOpacity
                     style={styles.whiteActionCircle}
                     onPress={() => navigation.navigate('FriendsScreen')}
+                    accessibilityLabel="Open Friends and Requests"
                   >
                     <Ionicons name="people" size={16} color="#0B0C10" />
                   </TouchableOpacity>
@@ -831,9 +901,10 @@ function ProfileScreen({ navigation }) {
                   <TouchableOpacity
                     style={styles.seeProfileToggleBtn}
                     onPress={() => setSheetExpanded((prev) => !prev)}
+                    accessibilityLabel={sheetExpanded ? 'Collapse profile bio' : 'Show full profile bio'}
                   >
                     <Text style={styles.seeProfileToggleText}>
-                      {sheetExpanded ? 'Collapse' : 'See profile'}
+                      {sheetExpanded ? 'Hide bio' : 'See bio'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -892,7 +963,7 @@ function ProfileScreen({ navigation }) {
                           isSelected && styles.hashtagPillTextSelected,
                         ]}
                       >
-                        #{genre.toLowerCase().replace(/\s+/g, '')}
+                        #{genre.toLowerCase().replace(/[^a-z0-9]+/g, '')}
                         {isSelected ? '  ✕' : ''}
                       </Text>
                     </TouchableOpacity>
@@ -920,12 +991,20 @@ function ProfileScreen({ navigation }) {
                           }
                           activeOpacity={0.88}
                         >
-                          <Image
-                            source={{ uri: art }}
-                            style={styles.sheetCarouselThumbImg}
-                          />
+                          {art ? (
+                            <Image
+                              source={{ uri: art }}
+                              style={styles.sheetCarouselThumbImg}
+                            />
+                          ) : (
+                            <View style={[styles.sheetCarouselThumbImg, { backgroundColor: '#1E2433', alignItems: 'center', justifyContent: 'center' }]}>
+                              <Ionicons name="musical-notes" size={24} color="#64748B" />
+                            </View>
+                          )}
                           <View style={styles.sheetThumbRankBadge}>
-                            <Text style={styles.sheetThumbRankText}>#{idx + 1}</Text>
+                            <Text style={styles.sheetThumbRankText}>
+                              #{song.slotRank || idx + 1}
+                            </Text>
                           </View>
                         </TouchableOpacity>
                       );
@@ -936,12 +1015,14 @@ function ProfileScreen({ navigation }) {
                     <TouchableOpacity
                       style={styles.carouselArrowCircle}
                       onPress={() => scrollCarousel(-2)}
+                      accessibilityLabel="Scroll tracks left"
                     >
                       <Feather name="arrow-left" size={14} color="#0B0C10" />
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.carouselArrowCircle}
                       onPress={() => scrollCarousel(2)}
+                      accessibilityLabel="Scroll tracks right"
                     >
                       <Feather name="arrow-right" size={14} color="#0B0C10" />
                     </TouchableOpacity>
@@ -956,14 +1037,20 @@ function ProfileScreen({ navigation }) {
                   onPress={() => setSelectedMemoir(latestMemoir)}
                   activeOpacity={0.85}
                 >
-                  <Image
-                    source={{
-                      uri: getHighResImage(
-                        latestMemoir.imageUrl || latestMemoir.artworkUrl100
-                      ),
-                    }}
-                    style={styles.sheetTestimonialAvatar}
-                  />
+                  {getHighResImage(latestMemoir.imageUrl || latestMemoir.artworkUrl100) ? (
+                    <Image
+                      source={{
+                        uri: getHighResImage(
+                          latestMemoir.imageUrl || latestMemoir.artworkUrl100
+                        ),
+                      }}
+                      style={styles.sheetTestimonialAvatar}
+                    />
+                  ) : (
+                    <View style={[styles.sheetTestimonialAvatar, { backgroundColor: '#1E2433', alignItems: 'center', justifyContent: 'center' }]}>
+                      <Ionicons name="musical-notes" size={16} color="#94A3B8" />
+                    </View>
+                  )}
                   <View style={{ flex: 1 }}>
                     <Text style={styles.sheetTestimonialQuote} numberOfLines={3}>
                       "{latestMemoir.comment}"
@@ -1010,6 +1097,7 @@ function ProfileScreen({ navigation }) {
                         ? handleTogglePreview(featuredTrack)
                         : navigation.navigate('Your13')
                     }
+                    accessibilityLabel={featuredTrack ? 'Play or stop featured track preview' : 'Curate Your 13'}
                   >
                     <FontAwesome5
                       name={
@@ -1027,29 +1115,43 @@ function ProfileScreen({ navigation }) {
                   <TouchableOpacity
                     style={styles.lavenderOutlineCircle}
                     onPress={() => navigation.navigate('Your13')}
+                    accessibilityLabel="Edit Your 13 playlist"
                   >
                     <Feather name="edit-2" size={15} color="#1A1026" />
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.lavenderOutlineCircle}
-                    onPress={() => navigation.navigate('Memoir')}
+                    onPress={() =>
+                      navigation.navigate(
+                        'Memoir',
+                        featuredTrack ? { song: featuredTrack } : undefined
+                      )
+                    }
+                    accessibilityLabel="Write memoir for featured track"
                   >
                     <Feather name="book-open" size={15} color="#1A1026" />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              <Image
-                source={{
-                  uri: getHighResImage(
-                    featuredTrack?.artworkUrl100 ||
-                    featuredTrack?.imageUrl ||
-                    avatarUri
-                  ),
-                }}
-                style={styles.lavenderArtworkImg}
-              />
+              {featuredTrack ? (
+                featuredTrackArt ? (
+                  <Image
+                    source={{ uri: featuredTrackArt }}
+                    style={styles.lavenderArtworkImg}
+                  />
+                ) : (
+                  <View style={[styles.lavenderArtworkImg, { backgroundColor: '#2B1F3F', alignItems: 'center', justifyContent: 'center' }]}>
+                    <Ionicons name="musical-notes" size={30} color="#D8C8F5" />
+                  </View>
+                )
+              ) : (
+                <Image
+                  source={{ uri: avatarUri }}
+                  style={styles.lavenderArtworkImg}
+                />
+              )}
             </View>
 
             {/* Top Curated Tracks List (Design 3: image_74650d.jpg) */}
@@ -1082,6 +1184,9 @@ function ProfileScreen({ navigation }) {
               filteredSongs.map((song, idx) => {
                 const trackKey = song.trackId || song.id || song.trackName || idx;
                 const isPlaying = playingTrackId === trackKey;
+                const artwork = getHighResImage(song.artworkUrl100 || song.imageUrl);
+                const rankLabel = `#${song.slotRank || idx + 1}`;
+                const normalizedGenre = normalizeGenreTag(song.primaryGenreName || song.genre);
 
                 return (
                   <TouchableOpacity
@@ -1090,20 +1195,24 @@ function ProfileScreen({ navigation }) {
                     onPress={() => navigation.navigate('SongDetails', { song })}
                     activeOpacity={0.85}
                   >
-                    <Image
-                      source={{
-                        uri: getHighResImage(song.artworkUrl100 || song.imageUrl),
-                      }}
-                      style={styles.trackRowArtwork}
-                    />
+                    {artwork ? (
+                      <Image
+                        source={{ uri: artwork }}
+                        style={styles.trackRowArtwork}
+                      />
+                    ) : (
+                      <View style={[styles.trackRowArtwork, { backgroundColor: '#1E2433', alignItems: 'center', justifyContent: 'center' }]}>
+                        <Ionicons name="musical-notes" size={20} color="#64748B" />
+                      </View>
+                    )}
 
                     <View style={styles.trackRowMeta}>
                       <Text style={styles.trackRowTitle} numberOfLines={1}>
                         {song.trackName || song.title || 'Unknown Track'}
                       </Text>
                       <Text style={styles.trackRowSub} numberOfLines={1}>
-                        By {song.artistName || song.artist || 'Unknown Artist'} •{' '}
-                        {song.primaryGenreName || song.genre || 'Track #' + (idx + 1)}
+                        {rankLabel} • By {song.artistName || song.artist || 'Unknown Artist'}
+                        {normalizedGenre ? ` • ${normalizedGenre}` : ''}
                       </Text>
                     </View>
 
@@ -1113,6 +1222,7 @@ function ProfileScreen({ navigation }) {
                         isPlaying && styles.trackRowPlayCircleActive,
                       ]}
                       onPress={() => handleTogglePreview(song)}
+                      accessibilityLabel={isPlaying ? 'Stop 30s preview' : 'Play 30s preview'}
                     >
                       <FontAwesome5
                         name={isPlaying ? 'stop' : 'play'}
@@ -1191,7 +1301,13 @@ function ProfileScreen({ navigation }) {
                     onPress={() => setSelectedMemoir(item)}
                     activeOpacity={0.88}
                   >
-                    <Image source={{ uri: artwork }} style={styles.memoirArtwork} />
+                    {artwork ? (
+                      <Image source={{ uri: artwork }} style={styles.memoirArtwork} />
+                    ) : (
+                      <View style={[styles.memoirArtwork, { alignItems: 'center', justifyContent: 'center' }]}>
+                        <Ionicons name="musical-notes" size={22} color="#64748B" />
+                      </View>
+                    )}
 
                     <View style={styles.memoirCardBody}>
                       <View style={styles.memoirTopMetaRow}>
@@ -1208,6 +1324,7 @@ function ProfileScreen({ navigation }) {
                           style={styles.memoirDeleteIconBtn}
                           onPress={() => handleDeleteMemoir(item.id)}
                           disabled={deletingMemoirId === item.id}
+                          accessibilityLabel="Delete memoir"
                         >
                           {deletingMemoirId === item.id ? (
                             <ActivityIndicator size="small" color="#EF4444" />
@@ -1281,14 +1398,20 @@ function ProfileScreen({ navigation }) {
                 </View>
 
                 <View style={styles.modalTrackSummary}>
-                  <Image
-                    source={{
-                      uri: getHighResImage(
-                        selectedMemoir.imageUrl || selectedMemoir.artworkUrl100
-                      ),
-                    }}
-                    style={styles.modalTrackCover}
-                  />
+                  {getHighResImage(selectedMemoir.imageUrl || selectedMemoir.artworkUrl100) ? (
+                    <Image
+                      source={{
+                        uri: getHighResImage(
+                          selectedMemoir.imageUrl || selectedMemoir.artworkUrl100
+                        ),
+                      }}
+                      style={styles.modalTrackCover}
+                    />
+                  ) : (
+                    <View style={[styles.modalTrackCover, { backgroundColor: '#1E2433', alignItems: 'center', justifyContent: 'center' }]}>
+                      <Ionicons name="musical-notes" size={24} color="#64748B" />
+                    </View>
+                  )}
                   <View style={{ flex: 1 }}>
                     <Text style={styles.modalTrackTitle}>
                       {selectedMemoir.title || selectedMemoir.trackName}
@@ -1993,11 +2116,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.78)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 14,
   },
   modalCard: {
-    width: '100%',
-    maxWidth: 440,
+    width: '92%',
+    maxWidth: 368,
     backgroundColor: '#151821',
     borderRadius: 24,
     padding: 20,

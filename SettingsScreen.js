@@ -90,17 +90,19 @@ const SettingsScreen = ({ route, navigation }) => {
         {/* Account Settings */}
         <List.Section title="ACCOUNT SETTINGS" titleStyle={styles.sectionHeader} style={styles.section}>
           <List.Item
-            title="Edit my profile"
+            title="Edit Profile"
             titleStyle={styles.listItemText}
-            left={() => <List.Icon icon="account-circle" color="#0A84FF" />}
+            left={() => <List.Icon icon="account-circle" color="#FF8C00" />}
+            right={() => <List.Icon icon="chevron-right" color="#64748B" />}
             onPress={() => navigation.navigate('UpdateProfileScreen', { userId })}
           />
           <Divider style={styles.divider} />
 
           <List.Item
-            title="Notification"
+            title="Notifications"
             titleStyle={styles.listItemText}
             left={() => <List.Icon icon="bell" color="#FF453A" />}
+            right={() => <List.Icon icon="chevron-right" color="#64748B" />}
             onPress={() => navigation.navigate('NotificationSettings')}
           />
           <Divider style={styles.divider} />
@@ -109,6 +111,7 @@ const SettingsScreen = ({ route, navigation }) => {
             title="Security & Account Deletion"
             titleStyle={styles.listItemText}
             left={() => <List.Icon icon="security" color="#FF9F0A" />}
+            right={() => <List.Icon icon="chevron-right" color="#64748B" />}
             onPress={() => navigation.navigate('SecuritySettings')}
           />
           <Divider style={styles.divider} />
@@ -120,14 +123,16 @@ const SettingsScreen = ({ route, navigation }) => {
             title="Feedback"
             titleStyle={styles.listItemText}
             left={() => <List.Icon icon="email" color="#34C759" />}
+            right={() => <List.Icon icon="chevron-right" color="#64748B" />}
             onPress={() => navigation.navigate('Feedback')}
           />
           <Divider style={styles.divider} />
 
           <List.Item
-            title="Rate us"
+            title="Rate Us"
             titleStyle={styles.listItemText}
-            left={() => <List.Icon icon="star" color="#0A84FF" />}
+            left={() => <List.Icon icon="star" color="#FF8C00" />}
+            right={() => <List.Icon icon="chevron-right" color="#64748B" />}
             onPress={() => navigation.navigate('Rate')}
           />
           <Divider style={styles.divider} />
@@ -245,7 +250,7 @@ const SettingsScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0D0E12',
+    backgroundColor: '#0A0C10',
   },
   topHeader: {
     flexDirection: 'row',
@@ -314,13 +319,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 18,
   },
   modalCard: {
-    width: '100%',
-    maxWidth: 480,
+    width: '92%',
+    maxWidth: 368,
     maxHeight: '85%',
-    backgroundColor: '#141822',
+    backgroundColor: '#151821',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#2A3142',
@@ -339,6 +345,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '800',
+    flex: 1,
+    paddingRight: 10,
   },
   modalCloseBtn: {
     padding: 6,

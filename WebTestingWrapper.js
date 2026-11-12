@@ -8,12 +8,16 @@ import { installWebAlertPolyfill } from './crossPlatformAlert';
 
 installWebAlertPolyfill();
 
+const SHOW_TEST_TOOLBAR =
+  typeof process !== 'undefined' &&
+  process.env?.EXPO_PUBLIC_SHOW_TEST_BAR === 'true';
+
 /**
  * WebTestingWrapper:
  * Enhances the web browser testing experience:
- * 1. Responsive Viewport Switcher (Mobile 414px, Tablet 680px, Full Width 100%)
- * 2. Developer / Tester Quick Navigation Toolbar to jump directly to any active screen
- * 3. Auth Status Bar with 1-Click Test Account Login (hihicad881@chainds.com) & Sign Out
+ * 1. Responsive Viewport Switcher (Mobile 420px, Tablet 720px, Full Width 100%)
+ * 2. Developer / Tester Quick Navigation Toolbar (gated behind EXPO_PUBLIC_SHOW_TEST_BAR=true)
+ * 3. Keeps app centered and responsive on Web browsers without leaking dev UI in standard builds.
  * On Native (iOS/Android), this simply renders children transparently.
  */
 export default function WebTestingWrapper({ children, navigationRef }) {
@@ -80,8 +84,10 @@ export default function WebTestingWrapper({ children, navigationRef }) {
 
   return (
     <View style={styles.outerShell}>
-      {/* Top Testing Control Bar */}
-      <View style={styles.topToolbar}>
+      {/* Top Testing Control Bar — gated so production/beta screenshots show clean UI */}
+      {SHOW_TEST_TOOLBAR && (
+        <>
+          <View style={styles.topToolbar}>
         {/* Left: Viewport Mode Switcher */}
         <View style={styles.toolSection}>
           <Text style={styles.sectionLabel}>VIEWPORT:</Text>
@@ -208,6 +214,8 @@ export default function WebTestingWrapper({ children, navigationRef }) {
             </TouchableOpacity>
           </ScrollView>
         </View>
+      )}
+        </>
       )}
 
       {/* Viewport Simulation Center Area */}

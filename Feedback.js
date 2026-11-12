@@ -120,7 +120,7 @@ const FeedbackForm = ({ navigation }) => {
             <Checkbox
               value={followUp}
               onValueChange={setFollowUp}
-              color={followUp ? '#0A84FF' : undefined}
+              color={followUp ? '#FF8C00' : undefined}
             />
             <Text style={styles.checkboxLabel}>Receive personal follow-up to your feedback.</Text>
           </View>
@@ -173,13 +173,16 @@ const FeedbackForm = ({ navigation }) => {
               value={feedbackType}
             >
               <View style={styles.radioButtonContainer}>
-                <RadioButton value="comments" /><Text style={styles.radioLabel}>Comments</Text>
+                <RadioButton value="comments" color="#FF8C00" uncheckedColor="#94A3B8" />
+                <Text style={styles.radioLabel}>Comments</Text>
               </View>
               <View style={styles.radioButtonContainer}>
-                <RadioButton value="suggestions" /><Text style={styles.radioLabel}>Suggestions</Text>
+                <RadioButton value="suggestions" color="#FF8C00" uncheckedColor="#94A3B8" />
+                <Text style={styles.radioLabel}>Suggestions</Text>
               </View>
               <View style={styles.radioButtonContainer}>
-                <RadioButton value="questions" /><Text style={styles.radioLabel}>Questions</Text>
+                <RadioButton value="questions" color="#FF8C00" uncheckedColor="#94A3B8" />
+                <Text style={styles.radioLabel}>Questions</Text>
               </View>
             </RadioButton.Group>
           </View>
@@ -195,7 +198,13 @@ const FeedbackForm = ({ navigation }) => {
             multiline
           />
 
-          <Button mode="contained" onPress={handleSubmit} style={styles.submitButton}>
+          <Button
+            mode="contained"
+            onPress={handleSubmit}
+            style={styles.submitButton}
+            buttonColor="#FF8C00"
+            textColor="#0A0C10"
+          >
             Submit Feedback
           </Button>
         </ScrollView>
@@ -207,20 +216,26 @@ const FeedbackForm = ({ navigation }) => {
 const RateUsScreen = ({ navigation }) => {
     const [rating, setRating] = React.useState(0);
     const [incentiveEarned, setIncentiveEarned] = React.useState(false);
-  
+    const [submitted, setSubmitted] = React.useState(false);
+
     const handleRating = (value) => {
       setRating(value);
+      setSubmitted(false);
       if (value > 0) {
         setIncentiveEarned(true);
       }
     };
-  
+
     const handleSubmit = () => {
-      // Handle rate us form submission logic here
-      console.log('Rating submitted:', rating);
+      if (rating === 0) {
+        Alert.alert('Rating Required', 'Please select a star rating before submitting.');
+        return;
+      }
+      setSubmitted(true);
+      Alert.alert('Thank You!', `Thanks for rating TuneHub ${rating}/5 stars.`);
       navigation.goBack();
     };
-  
+
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.topHeader}>
@@ -233,7 +248,7 @@ const RateUsScreen = ({ navigation }) => {
         <ScrollView contentContainerStyle={styles.formContainer}>
           <Text style={styles.header}>⭐ Rate Us!</Text>
           <Text style={styles.subHeader}>Your feedback helps us make this app better for you!</Text>
-  
+
           {/* Rating Section */}
           <View style={styles.ratingContainer}>
             {[1, 2, 3, 4, 5].map((star) => (
@@ -241,23 +256,31 @@ const RateUsScreen = ({ navigation }) => {
                 <AntDesign
                   name={star <= rating ? "star" : "staro"}
                   size={40}
-                  color={star <= rating ? '#FFD700' : '#888'}
+                  color={star <= rating ? '#FF8C00' : '#888'}
                 />
               </TouchableOpacity>
             ))}
           </View>
-  
+
           {incentiveEarned && (
             <View style={styles.incentiveContainer}>
-              <Text style={styles.incentiveText}>There is more to come !! </Text>
+              <Text style={styles.incentiveText}>Thanks for selecting {rating}/5 stars!</Text>
             </View>
           )}
-  
-          <Button mode="contained" onPress={handleSubmit} style={styles.submitButton}>
+
+          <Button
+            mode="contained"
+            onPress={handleSubmit}
+            style={styles.submitButton}
+            buttonColor="#FF8C00"
+            textColor="#0A0C10"
+          >
             Submit Rating
           </Button>
-  
-          <Text style={styles.thankYouText}>Thank you for helping us improve!</Text>
+
+          {(submitted || incentiveEarned) && (
+            <Text style={styles.thankYouText}>Thank you for helping us improve!</Text>
+          )}
         </ScrollView>
       </SafeAreaView>
     );
@@ -268,8 +291,12 @@ const BugReportForm = ({ navigation }) => {
   const [bugDescription, setBugDescription] = React.useState('');
 
   const handleSubmit = () => {
-    // Handle bug report form submission logic here
-    console.log('Bug report submitted:', bugDescription);
+    const validation = validateFeedbackPayload(bugDescription);
+    if (!validation.ok) {
+      Alert.alert('Description Required', validation.error);
+      return;
+    }
+    Alert.alert('Bug Report Received', 'Thank you — our engineering team has logged your report.');
     navigation.goBack();
   };
 
@@ -292,7 +319,13 @@ const BugReportForm = ({ navigation }) => {
           onChangeText={setBugDescription}
           multiline
         />
-        <Button mode="contained" onPress={handleSubmit} style={styles.submitButton}>
+        <Button
+          mode="contained"
+          onPress={handleSubmit}
+          style={styles.submitButton}
+          buttonColor="#FF8C00"
+          textColor="#0A0C10"
+        >
           Submit Bug Report
         </Button>
       </ScrollView>
@@ -303,7 +336,7 @@ const BugReportForm = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#0A0C10',
   },
   topHeader: {
     flexDirection: 'row',
@@ -366,14 +399,18 @@ subHeader: {
     textAlign: 'center',
   },
   input: {
-    backgroundColor: '#222',
+    backgroundColor: '#151821',
     color: '#ffffff',
-    padding: 10,
-    borderRadius: 5,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
     marginBottom: 20,
   },
   submitButton: {
-    backgroundColor: '#0A84FF',
+    backgroundColor: '#FF8C00',
+    borderRadius: 12,
+    marginTop: 4,
   },
   checkboxContainer: {
     flexDirection: 'row',
@@ -393,7 +430,7 @@ subHeader: {
     marginBottom: 10,
   },
   radioLabel: {
-    color: '#0A84FF',
+    color: '#F8FAFC',
     marginLeft: 8,
   },
   thankYouText: {

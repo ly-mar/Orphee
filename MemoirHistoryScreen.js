@@ -14,7 +14,6 @@ import { IconButton, Button, Modal, Portal } from 'react-native-paper';
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { auth, db } from './firebaseConfig';
-import Taskbar from './Taskbar';
 import { normalizeTrack } from './services/musicApi';
 import { loadUserMemoirHistory } from './utils/memoirUtils';
 
@@ -191,10 +190,6 @@ const MemoirHistoryScreen = ({ route, navigation }) => {
           </Button>
         </Modal>
       </Portal>
-
-      <View style={styles.taskbarContainer}>
-        <Taskbar />
-      </View>
     </SafeAreaView>
   );
 };

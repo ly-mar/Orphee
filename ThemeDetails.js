@@ -5,7 +5,7 @@ import { createAsyncActionLock } from './utils/actionLockUtils';
 
 const populateLock = createAsyncActionLock();
 
-const themes = [
+export const THEMES_CATALOG = [
   { id: 'child_of_the_80s', name: "I'm a child of the 80s" },
   { id: 'childhood_favorites', name: 'My Favorite Songs from My Childhood' },
   { id: 'ex_girlfriends_club', name: 'The Ex Girlfriends Club' },
@@ -22,12 +22,23 @@ const themes = [
   { id: 'airplane_mode', name: 'Airplane Mode' }
 ];
 
+export const resolveThemeTitle = (themeId, explicitTheme) => {
+  const cleanExplicit = typeof explicitTheme === 'string' ? explicitTheme.trim() : '';
+  if (cleanExplicit) return cleanExplicit;
+  const matched = THEMES_CATALOG.find((item) => item.id === themeId);
+  if (matched?.name) return matched.name;
+  if (!themeId) return 'Collective Shelf';
+  return String(themeId)
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+    .join(' ');
+};
 
 export const populateThemes = async () => {
   return populateLock(async () => {
     try {
       const collectionRef = collection(db, 'collective');
-      for (let theme of themes) {
+      for (let theme of THEMES_CATALOG) {
         const themeDocRef = doc(collectionRef, theme.id);
         await setDoc(themeDocRef, { name: theme.name, imagePath: theme.imagePath, createdAt: new Date() });
       }

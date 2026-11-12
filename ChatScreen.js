@@ -9,7 +9,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  Alert,
 } from 'react-native';
 import { db, auth } from './firebaseConfig';
 import {
@@ -20,7 +19,6 @@ import {
   addDoc,
   getDoc,
   doc,
-  setDoc,
 } from 'firebase/firestore';
 import { loadUserProfilePic } from './UploadProfilePicture';
 import { sendExpoPushNotification } from './HandlingFriends';
@@ -28,6 +26,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 import { createAsyncActionLock } from './utils/actionLockUtils';
 import { validateOutgoingChatMessage, MAX_CHAT_MESSAGE_LENGTH } from './utils/chatMessageUtils';
+import UserModerationModal from './UserModerationModal';
 
 const DEFAULT_AVATAR =
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120';
@@ -38,6 +37,7 @@ const ChatScreen = ({ route, navigation }) => {
   const [messages, setMessages] = useState([]);
   const [userProfilePic, setUserProfilePic] = useState(DEFAULT_AVATAR);
   const [otherUserId, setOtherUserId] = useState(routeOtherId || null);
+  const [moderationVisible, setModerationVisible] = useState(false);
   const userId = auth.currentUser?.uid;
   const sendLockRef = useRef(createAsyncActionLock());
 
@@ -128,68 +128,13 @@ const ChatScreen = ({ route, navigation }) => {
     });
   };
 
-  const handleReportOrBlockUser = (targetUid, targetUsername, navigation) => {
-    const reporterUid = auth.currentUser?.uid;
-    if (!reporterUid || !targetUid) return;
-
-    const submitReport = async (reason, alsoBlock = false) => {
-      try {
-        await addDoc(collection(db, 'reports'), {
-          reportedUid: targetUid,
-          reportedUsername: targetUsername || 'User',
-          reporterUid,
-          reason,
-          blocked: alsoBlock,
-          timestamp: new Date().toISOString(),
-        });
-
-        if (alsoBlock) {
-          await setDoc(
-            doc(db, 'users', reporterUid),
-            { [`blockedUsers.${targetUid}`]: true },
-            { merge: true }
-          );
-        }
-
-        Alert.alert(
-          alsoBlock ? 'User Blocked & Reported' : 'Report Submitted',
-          alsoBlock
-            ? `@${targetUsername} has been blocked and reported to our moderation team.`
-            : 'Thank you. Our moderation team will review this report within 24 hours.'
-        );
-
-        if (alsoBlock && navigation?.canGoBack()) {
-          navigation.goBack();
-        }
-      } catch (error) {
-        Alert.alert('Error', 'Unable to submit report right now.');
-      }
-    };
-
-    Alert.alert(
-      `Report or Block @${targetUsername || 'User'}`,
-      'Select an action to keep TuneHub safe:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Report Inappropriate Content',
-          onPress: () => submitReport('Inappropriate Content / Spam', false),
-        },
-        {
-          text: 'Block & Report User',
-          style: 'destructive',
-          onPress: () => submitReport('Harassment / Blocked by User', true),
-        },
-      ]
-    );
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
+          accessibilityLabel="Go back"
         >
           <FontAwesome5 name="chevron-left" size={18} color="#FFFFFF" />
         </TouchableOpacity>
@@ -198,7 +143,7 @@ const ChatScreen = ({ route, navigation }) => {
           style={styles.recipientRow}
           onPress={() => {
             if (otherUserId) {
-              navigation.navigate('UserProfile', { userId: otherUserId });
+              navigation.navigate('UserProfile', { userId: otherUserId, username });
             }
           }}
         >
@@ -206,14 +151,36 @@ const ChatScreen = ({ route, navigation }) => {
             source={{ uri: userProfilePic || DEFAULT_AVATAR }}
             style={styles.profileImage}
           />
-          <Text style={styles.username}>@{username}</Text>
+          <Text style={styles.username} numberOfLines={1}>@{username}</Text>
         </TouchableOpacity>
+
+        {otherUserId && otherUserId !== userId ? (
+          <TouchableOpacity
+            style={styles.moderationButton}
+            onPress={() => setModerationVisible(true)}
+            accessibilityLabel="Report or block user"
+          >
+            <FontAwesome5 name="ellipsis-h" size={16} color="#E2E8F0" />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 14 }}
+        contentContainerStyle={[
+          { padding: 14 },
+          messages.length === 0 && styles.emptyListContent,
+        ]}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <FontAwesome5 name="comments" size={28} color="#475569" />
+            <Text style={styles.emptyTitle}>No messages yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Break the ice with @{username} about your favorite tracks.
+            </Text>
+          </View>
+        }
         renderItem={({ item }) => {
           const isMine = item.userId === userId;
           return (
@@ -250,6 +217,18 @@ const ChatScreen = ({ route, navigation }) => {
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
+
+      <UserModerationModal
+        visible={moderationVisible}
+        onClose={() => setModerationVisible(false)}
+        targetUid={otherUserId}
+        targetUsername={username}
+        onBlockedSuccess={() => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          }
+        }}
+      />
     </SafeAreaView>
   );
 };
@@ -273,8 +252,41 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   recipientRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    marginRight: 8,
+  },
+  moderationButton: {
+    width: 40,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#1E2433',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyListContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+  },
+  emptyTitle: {
+    color: '#F1F5F9',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  emptySubtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 19,
   },
   profileImage: {
     width: 42,

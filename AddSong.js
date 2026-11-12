@@ -16,7 +16,6 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { db, auth } from './firebaseConfig';
 import { doc, setDoc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { FontAwesome5 } from '@expo/vector-icons';
-import Taskbar from './Taskbar';
 import {
   createDebouncedSearch,
   normalizeTrack,
@@ -24,11 +23,13 @@ import {
 } from './services/musicApi';
 import { createAudioPreviewController } from './audioPreviewController';
 import { createAsyncActionLock } from './utils/actionLockUtils';
+import { resolveThemeTitle } from './ThemeDetails';
 
 function AddSong() {
   const navigation = useNavigation();
   const route = useRoute();
   const themeId = route?.params?.themeId || 'child_of_the_80s';
+  const themeTitle = resolveThemeTitle(themeId, route?.params?.theme);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -129,7 +130,11 @@ function AddSong() {
           });
         }
 
-        navigation.navigate('Pickerchoosers', { themeId, refresh: true });
+        navigation.navigate({
+          name: 'Pickerchoosers',
+          params: { themeId, theme: themeTitle, refresh: true },
+          merge: true,
+        });
       } catch (err) {
         console.error('Error adding song to Firestore:', err);
         Alert.alert('Error', 'Could not add song to The Collective.');
@@ -197,10 +202,6 @@ function AddSong() {
           ) : null
         }
       />
-
-      <View style={styles.taskbarContainer}>
-        <Taskbar />
-      </View>
     </SafeAreaView>
   );
 }

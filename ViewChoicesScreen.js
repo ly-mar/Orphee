@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
-    paddingBottom: 90,
+    paddingBottom: 110,
   },
   choiceCard: {
     marginBottom: 10,

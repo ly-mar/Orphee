@@ -20,33 +20,36 @@ import {
   query,
   where,
   onSnapshot,
-  orderBy,
-  addDoc,
   setDoc,
 } from 'firebase/firestore';
 import { db, auth } from './firebaseConfig';
-import Taskbar from './Taskbar';
 import moment from 'moment';
 import { sendFriendRequest } from './HandlingFriends';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 import FadingCarousel from './FadingCarousel';
+import UserModerationModal from './UserModerationModal';
+import { openOrCreateDirectChat } from './utils/chatMessageUtils';
+import { normalizeYour13List } from './utils/playlistUtils';
+import { normalizeAndSortMediaList } from './utils/avatarUtils';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
 const windowWidth = Dimensions.get('window').width;
 
 const getHighResImage = (imageUrl) => {
-  if (!imageUrl) return 'https://via.placeholder.com/400';
+  if (!imageUrl || typeof imageUrl !== 'string') return null;
   return imageUrl.replace('100x100', '500x500');
 };
 
 const UserProfileScreen = ({ route, navigation }) => {
-  const { userId } = route?.params || {};
-  const [username, setUsername] = useState('');
+  const { userId, username: routeUsername } = route?.params || {};
+  const [username, setUsername] = useState(routeUsername || '');
   const [selectedSongs, setSelectedSongs] = useState([]);
   const [musicOfTheDay, setMusicOfTheDay] = useState(null);
   const [currentDate] = useState(moment().format('YYYY-MM-DD'));
   const [friendStatus, setFriendStatus] = useState('none');
+  const [isRelationshipLoaded, setIsRelationshipLoaded] = useState(false);
+  const [moderationVisible, setModerationVisible] = useState(false);
   const currentUserId = auth.currentUser?.uid;
   const [mediaList, setMediaList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,21 +60,28 @@ const UserProfileScreen = ({ route, navigation }) => {
   const [userProfileImage, setUserProfileImage] = useState(null);
 
   const fetchUserData = async () => {
-    if (!userId) return;
+    if (!userId) {
+      setIsRelationshipLoaded(true);
+      setLoading(false);
+      return;
+    }
+    setIsRelationshipLoaded(false);
+    setFriendStatus('none');
     try {
-      let resolvedUsername = userId;
+      let resolvedUsername = routeUsername || '';
       const userRef = doc(db, 'users', userId);
       const userDoc = await getDoc(userRef);
 
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        resolvedUsername = userData.username || userId;
+        resolvedUsername = userData.username || userData.displayName || resolvedUsername || 'Listener';
         setUsername(resolvedUsername);
         if (userData.profileImageUrl) {
           setUserProfileImage(userData.profileImageUrl);
         }
       } else {
-        setUsername(userId);
+        resolvedUsername = resolvedUsername || 'Listener';
+        setUsername(resolvedUsername);
       }
 
       // Check playlists/{userId} first, then fallback to playlists/{username}
@@ -80,24 +90,26 @@ const UserProfileScreen = ({ route, navigation }) => {
       if (uidPlaylistDoc.exists() && uidPlaylistDoc.data()?.songs) {
         const raw = uidPlaylistDoc.data().songs;
         loadedSongs = Array.isArray(raw) ? raw : Object.values(raw);
-      } else if (resolvedUsername !== userId) {
+      } else if (resolvedUsername && resolvedUsername !== userId) {
         const namePlaylistDoc = await getDoc(doc(db, 'playlists', resolvedUsername));
         if (namePlaylistDoc.exists() && namePlaylistDoc.data()?.songs) {
           const raw = namePlaylistDoc.data().songs;
           loadedSongs = Array.isArray(raw) ? raw : Object.values(raw);
         }
       }
-      setSelectedSongs(loadedSongs);
+      setSelectedSongs(normalizeYour13List(loadedSongs));
 
       // Check daily/{userId}_{today} then fallback to daily/{username}_{today}
       const dailyByUid = await getDoc(doc(db, 'daily', `${userId}_${currentDate}`));
       if (dailyByUid.exists() && dailyByUid.data()?.music) {
         setMusicOfTheDay(dailyByUid.data().music);
-      } else {
+      } else if (resolvedUsername) {
         const dailyByName = await getDoc(
           doc(db, 'daily', `${resolvedUsername}_${currentDate}`)
         );
         setMusicOfTheDay(dailyByName.exists() ? dailyByName.data()?.music || null : null);
+      } else {
+        setMusicOfTheDay(null);
       }
 
       const friendRef = doc(db, 'requests', userId);
@@ -105,6 +117,9 @@ const UserProfileScreen = ({ route, navigation }) => {
       if (friendsDoc.exists()) {
         setFollowing(Object.keys(friendsDoc.data()?.following || {}).length);
         setFollowers(Object.keys(friendsDoc.data()?.followers || {}).length);
+      } else {
+        setFollowing(0);
+        setFollowers(0);
       }
 
       if (currentUserId) {
@@ -117,13 +132,12 @@ const UserProfileScreen = ({ route, navigation }) => {
             sentRequests = {},
           } = currentUserRequestsDoc.data();
 
-          if (sentRequests[userId] || sentRequests[resolvedUsername]) {
+          if (sentRequests[userId] || (resolvedUsername && sentRequests[resolvedUsername])) {
             setFriendStatus('pending');
           } else if (
             myFollowers[userId] ||
             myFollowing[userId] ||
-            myFollowers[resolvedUsername] ||
-            myFollowing[resolvedUsername]
+            (resolvedUsername && (myFollowers[resolvedUsername] || myFollowing[resolvedUsername]))
           ) {
             setFriendStatus('friend');
           }
@@ -132,6 +146,7 @@ const UserProfileScreen = ({ route, navigation }) => {
     } catch (error) {
       console.warn('Error fetching user profile data:', error.message);
     } finally {
+      setIsRelationshipLoaded(true);
       setLoading(false);
     }
   };
@@ -171,8 +186,7 @@ const UserProfileScreen = ({ route, navigation }) => {
       buildQuery: () =>
         query(
           collection(db, 'images'),
-          where('userId', '==', userId),
-          orderBy('uploadedAt', 'desc')
+          where('userId', '==', userId)
         ),
       onSnapshotFn: onSnapshot,
       onNext: (snapshot) => {
@@ -180,7 +194,7 @@ const UserProfileScreen = ({ route, navigation }) => {
           id: d.id,
           ...d.data(),
         }));
-        setMediaList(userMedia);
+        setMediaList(normalizeAndSortMediaList(userMedia));
         setLoading(false);
       },
       onError: (err) => {
@@ -193,12 +207,16 @@ const UserProfileScreen = ({ route, navigation }) => {
   }, [userId]);
 
   const getFriendRequestButtonText = () => {
+    if (!isRelationshipLoaded) return 'Checking...';
     if (friendStatus === 'pending') return 'Pending...';
     if (friendStatus === 'friend') return 'Fellow connoisseur';
     return 'Send Friend Request';
   };
 
   const getFriendRequestButtonStyle = () => {
+    if (!isRelationshipLoaded) {
+      return [styles.sendFriendRequestButton, { backgroundColor: '#1E2430' }];
+    }
     if (friendStatus === 'pending') {
       return [styles.sendFriendRequestButton, { backgroundColor: '#2D3748' }];
     }
@@ -210,6 +228,7 @@ const UserProfileScreen = ({ route, navigation }) => {
 
   const handleSendFriendRequest = async () => {
     try {
+      if (!isRelationshipLoaded) return;
       if (!username) {
         Alert.alert('Error', 'No username found for this user.');
         return;
@@ -223,35 +242,34 @@ const UserProfileScreen = ({ route, navigation }) => {
   };
 
   const startChat = async (targetUid, targetUsername) => {
-    if (targetUid && targetUid !== currentUserId && currentUserId) {
-      try {
-        const chatParticipants = [currentUserId, targetUid].sort();
-        const chatId = `${chatParticipants[0]}_${chatParticipants[1]}`;
-        const chatsRef = collection(db, 'chats');
-        const q = query(chatsRef, where('chatId', '==', chatId));
-        const querySnapshot = await getDocs(q);
+    if (!targetUid || !currentUserId || targetUid === currentUserId) return;
+    try {
+      const chatPayload = await openOrCreateDirectChat({
+        currentUserId,
+        targetUid,
+        targetUsername: targetUsername || username || 'Listener',
+        docFn: doc,
+        getDocFn: getDoc,
+        setDocFn: setDoc,
+        collectionFn: collection,
+        queryFn: query,
+        whereFn: where,
+        getDocsFn: getDocs,
+        db,
+      });
 
-        let finalChatId = chatId;
-        if (querySnapshot.empty) {
-          const newChatRef = await addDoc(chatsRef, {
-            chatId,
-            participants: chatParticipants,
-            createdAt: Date.now(),
-          });
-          finalChatId = newChatRef.id;
-        } else {
-          finalChatId = querySnapshot.docs[0].id;
-        }
-
-        navigation.navigate('ChatScreen', {
-          chatId: finalChatId,
-          username: targetUsername,
-        });
-      } catch (e) {
-        console.error('Error starting chat:', e);
-      }
+      navigation.navigate('ChatScreen', {
+        chatId: chatPayload.chatId,
+        otherUserId: chatPayload.otherUserId,
+        username: chatPayload.username,
+      });
+    } catch (e) {
+      console.error('Error starting chat:', e);
+      Alert.alert('Unable to start chat', 'Please check your connection and try again.');
     }
   };
+
+  const isOwnProfile = Boolean(currentUserId && userId && currentUserId === userId);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -260,8 +278,20 @@ const UserProfileScreen = ({ route, navigation }) => {
           <FontAwesome5 name="arrow-left" size={16} color="#FFF" />
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{username ? `@${username}` : 'Profile'}</Text>
-        <View style={{ width: 60 }} />
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {username ? `@${username}` : 'Profile'}
+        </Text>
+        {!isOwnProfile && userId ? (
+          <TouchableOpacity
+            onPress={() => setModerationVisible(true)}
+            style={styles.moderationButton}
+            accessibilityLabel="Report or block user"
+          >
+            <FontAwesome5 name="ellipsis-h" size={16} color="#E2E8F0" />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 60 }} />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollViewContent}>
@@ -271,7 +301,7 @@ const UserProfileScreen = ({ route, navigation }) => {
               <ActivityIndicator size="large" color="#FF8C00" />
             ) : mediaList.length > 0 ? (
               <FadingCarousel
-                images={mediaList.map((item) => item.downloadURL)}
+                images={mediaList.map((item) => item.resolvedUrl).filter(Boolean)}
                 duration={3000}
               />
             ) : userProfileImage ? (
@@ -285,35 +315,46 @@ const UserProfileScreen = ({ route, navigation }) => {
           </View>
 
           <View style={styles.usernameWithMailIcon}>
-            <Text style={styles.username}>{username}</Text>
-            <TouchableOpacity onPress={() => startChat(userId, username)}>
-              <FontAwesome5
-                name="envelope"
-                size={22}
-                color="#FF8C00"
-                style={styles.mailIcon}
-              />
-            </TouchableOpacity>
+            <Text style={styles.username}>{username || 'Listener'}</Text>
+            {!isOwnProfile && userId && (
+              <TouchableOpacity
+                onPress={() => startChat(userId, username)}
+                accessibilityLabel="Message user"
+              >
+                <FontAwesome5
+                  name="envelope"
+                  size={22}
+                  color="#FF8C00"
+                  style={styles.mailIcon}
+                />
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{following}</Text>
+              <Text style={styles.statNumber}>
+                {isRelationshipLoaded ? following : '--'}
+              </Text>
               <Text style={styles.statLabel}>Following</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{followers}</Text>
+              <Text style={styles.statNumber}>
+                {isRelationshipLoaded ? followers : '--'}
+              </Text>
               <Text style={styles.statLabel}>Followers</Text>
             </View>
           </View>
 
-          <TouchableOpacity
-            style={getFriendRequestButtonStyle()}
-            onPress={handleSendFriendRequest}
-            disabled={friendStatus !== 'none'}
-          >
-            <Text style={styles.followButtonText}>{getFriendRequestButtonText()}</Text>
-          </TouchableOpacity>
+          {!isOwnProfile && userId && (
+            <TouchableOpacity
+              style={getFriendRequestButtonStyle()}
+              onPress={handleSendFriendRequest}
+              disabled={!isRelationshipLoaded || friendStatus !== 'none'}
+            >
+              <Text style={styles.followButtonText}>{getFriendRequestButtonText()}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Tabs Section */}
@@ -339,26 +380,33 @@ const UserProfileScreen = ({ route, navigation }) => {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ paddingHorizontal: 14 }}
               >
-                {selectedSongs.map((song, idx) => (
-                  <TouchableOpacity
-                    key={`${song.trackId || idx}`}
-                    style={styles.songTile}
-                    onPress={() => navigation.navigate('SongDetails', { song })}
-                  >
-                    <Image
-                      source={{
-                        uri: getHighResImage(song.artworkUrl100 || song.imageUrl),
-                      }}
-                      style={styles.playlistCover}
-                    />
-                    <Text style={styles.songTileTitle} numberOfLines={1}>
-                      {song.trackName || song.title}
-                    </Text>
-                    <Text style={styles.songTileArtist} numberOfLines={1}>
-                      {song.artistName || song.artist}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {selectedSongs.map((song, idx) => {
+                  const artworkUri = getHighResImage(song.artworkUrl100 || song.imageUrl);
+                  return (
+                    <TouchableOpacity
+                      key={`${song.trackId || idx}`}
+                      style={styles.songTile}
+                      onPress={() => navigation.navigate('SongDetails', { song })}
+                    >
+                      {artworkUri ? (
+                        <Image
+                          source={{ uri: artworkUri }}
+                          style={styles.playlistCover}
+                        />
+                      ) : (
+                        <View style={[styles.playlistCover, styles.artworkFallback]}>
+                          <FontAwesome5 name="music" size={24} color="#64748B" />
+                        </View>
+                      )}
+                      <Text style={styles.songTileTitle} numberOfLines={1}>
+                        {song.trackName || song.title}
+                      </Text>
+                      <Text style={styles.songTileArtist} numberOfLines={1}>
+                        {song.artistName || song.artist}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             ) : (
               <Text style={styles.noMusicText}>No Your13 tracks published yet.</Text>
@@ -369,22 +417,31 @@ const UserProfileScreen = ({ route, navigation }) => {
         {selectedTab === 'Memoir' && (
           <View style={styles.memoirContainer}>
             {pastMemoirs.length > 0 ? (
-              pastMemoirs.map((memoir, index) => (
-                <View key={index} style={styles.memoirItemContainer}>
-                  <View style={styles.coverAndTrackInfoContainer}>
-                    <Image
-                      source={{ uri: getHighResImage(memoir.item?.artworkUrl100) }}
-                      style={styles.coverImage}
-                    />
-                    <Text style={styles.trackTitle}>
-                      {memoir.item?.trackName} - {memoir.item?.artistName}
-                    </Text>
+              pastMemoirs.map((memoir, index) => {
+                const memoirCoverUri = getHighResImage(memoir.item?.artworkUrl100 || memoir.item?.imageUrl);
+                return (
+                  <View key={index} style={styles.memoirItemContainer}>
+                    <View style={styles.coverAndTrackInfoContainer}>
+                      {memoirCoverUri ? (
+                        <Image
+                          source={{ uri: memoirCoverUri }}
+                          style={styles.coverImage}
+                        />
+                      ) : (
+                        <View style={[styles.coverImage, styles.artworkFallback]}>
+                          <FontAwesome5 name="music" size={22} color="#64748B" />
+                        </View>
+                      )}
+                      <Text style={styles.trackTitle}>
+                        {memoir.item?.trackName} - {memoir.item?.artistName}
+                      </Text>
+                    </View>
+                    <View style={styles.commentDisplayContainer}>
+                      <Text style={styles.commentDisplayText}>{memoir.comment}</Text>
+                    </View>
                   </View>
-                  <View style={styles.commentDisplayContainer}>
-                    <Text style={styles.commentDisplayText}>{memoir.comment}</Text>
-                  </View>
-                </View>
-              ))
+                );
+              })
             ) : (
               <Text style={styles.noMusicText}>No recent memoirs to display.</Text>
             )}
@@ -392,66 +449,18 @@ const UserProfileScreen = ({ route, navigation }) => {
         )}
       </ScrollView>
 
-      <View style={styles.taskbarContainer}>
-        <Taskbar />
-      </View>
+      <UserModerationModal
+        visible={moderationVisible}
+        onClose={() => setModerationVisible(false)}
+        targetUid={userId}
+        targetUsername={username || 'Listener'}
+        onBlockedSuccess={() => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          }
+        }}
+      />
     </SafeAreaView>
-  );
-};
-
-const handleReportOrBlockUser = (targetUid, targetUsername, navigation) => {
-  const reporterUid = auth.currentUser?.uid;
-  if (!reporterUid || !targetUid) return;
-
-  const submitReport = async (reason, alsoBlock = false) => {
-    try {
-      await addDoc(collection(db, 'reports'), {
-        reportedUid: targetUid,
-        reportedUsername: targetUsername || 'User',
-        reporterUid,
-        reason,
-        blocked: alsoBlock,
-        timestamp: new Date().toISOString(),
-      });
-
-      if (alsoBlock) {
-        await setDoc(
-          doc(db, 'users', reporterUid),
-          { [`blockedUsers.${targetUid}`]: true },
-          { merge: true }
-        );
-      }
-
-      Alert.alert(
-        alsoBlock ? 'User Blocked & Reported' : 'Report Submitted',
-        alsoBlock
-          ? `@${targetUsername} has been blocked and reported to our moderation team.`
-          : 'Thank you. Our moderation team will review this report within 24 hours.'
-      );
-
-      if (alsoBlock && navigation?.canGoBack()) {
-        navigation.goBack();
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Unable to submit report right now.');
-    }
-  };
-
-  Alert.alert(
-    `Report or Block @${targetUsername || 'User'}`,
-    'Select an action to keep TuneHub safe:',
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Report Inappropriate Content',
-        onPress: () => submitReport('Inappropriate Content / Spam', false),
-      },
-      {
-        text: 'Block & Report User',
-        style: 'destructive',
-        onPress: () => submitReport('Harassment / Blocked by User', true),
-      },
-    ]
   );
 };
 
@@ -488,9 +497,27 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 17,
     fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 8,
+  },
+  moderationButton: {
+    width: 44,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#222734',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  artworkFallback: {
+    backgroundColor: '#151821',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   scrollViewContent: {
-    paddingBottom: 100,
+    paddingBottom: 40,
   },
   profileHeaderContainer: {
     alignItems: 'center',
@@ -677,12 +704,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#E2E8F0',
     fontStyle: 'italic',
-  },
-  taskbarContainer: {
-    position: 'absolute',
-    bottom: 0,
-    width: '100%',
-    backgroundColor: '#0D1017',
   },
 });
 

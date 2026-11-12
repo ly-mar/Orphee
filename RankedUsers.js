@@ -1,5 +1,5 @@
 // RankedUsers.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -15,9 +15,12 @@ import {
 import { db, auth } from './firebaseConfig';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { FontAwesome5 } from '@expo/vector-icons';
-import Taskbar from './Taskbar';
 import { sendFriendRequest } from './HandlingFriends';
-import { sanitizeCompatibilityScore } from './utils/algorithmUtils';
+import {
+  sanitizeCompatibilityScore,
+  deduplicateRankedUsers,
+  formatListenerDisplayName,
+} from './utils/algorithmUtils';
 
 export { sanitizeCompatibilityScore };
 
@@ -34,7 +37,7 @@ async function resolveUserRecord(identifier) {
       const data = directDoc.data();
       return {
         uid: directDoc.id,
-        username: data.username || identifier,
+        username: formatListenerDisplayName(identifier, data.username || data.displayName),
         profileImageUrl: data.profileImageUrl || null,
       };
     }
@@ -46,14 +49,18 @@ async function resolveUserRecord(identifier) {
       const data = userDoc.data();
       return {
         uid: userDoc.id,
-        username: data.username || identifier,
+        username: formatListenerDisplayName(identifier, data.username || data.displayName),
         profileImageUrl: data.profileImageUrl || null,
       };
     }
   } catch (_) {
-    // Fallback to raw identifier if Firestore permissions restrict user lookup
+    // Fallback to clean formatted identifier if Firestore permissions restrict user lookup
   }
-  return { uid: identifier, username: identifier, profileImageUrl: null };
+  return {
+    uid: identifier,
+    username: formatListenerDisplayName(identifier),
+    profileImageUrl: null,
+  };
 }
 
 function RankedUsers({ route, navigation }) {
@@ -199,15 +206,26 @@ function RankedUsers({ route, navigation }) {
     return { border: '#262B38', badgeBg: '#1F2430', badgeText: '#94A3B8', icon: '⭐' };
   };
 
+  const dedupedRankedUsers = useMemo(
+    () =>
+      deduplicateRankedUsers(rankedUsers, {
+        usernamesMap: usernames,
+        userIdsMap: userIds,
+        currentUserId: userId,
+        currentUsername,
+      }),
+    [rankedUsers, usernames, userIds, userId, currentUsername]
+  );
+
   const navigateToGraph = () => {
-    const enrichedUsers = rankedUsers.map((u) => {
+    const enrichedUsers = dedupedRankedUsers.map((u) => {
       const key = u.uname || u.uid;
       const pct = sanitizeCompatibilityScore(Math.round((Number(u.totalScore) || 0) * 100));
       return {
         ...u,
         uname: key,
-        uid: userIds[key] || key,
-        username: usernames[key] || u.username || key,
+        uid: u.resolvedUid || userIds[key] || key,
+        username: u.displayName || usernames[key] || u.username || key,
         profileImageUrl: userImages[key] || null,
         friendStatus: friendStatuses[key] || 'none',
         formattedScore: `${pct}%`,
@@ -225,7 +243,17 @@ function RankedUsers({ route, navigation }) {
   };
 
   const renderRanking = () => {
-    if (!rankedUsers || rankedUsers.length === 0) {
+    if (hydrating && rankedUsers.length > 0) {
+      return (
+        <View style={styles.emptyBox}>
+          <ActivityIndicator size="large" color="#FF8C00" style={{ marginBottom: 12 }} />
+          <Text style={styles.emptyTitle}>Matching Music Twins...</Text>
+          <Text style={styles.emptySub}>Resolving community profiles & compatibility scores.</Text>
+        </View>
+      );
+    }
+
+    if (!dedupedRankedUsers || dedupedRankedUsers.length === 0) {
       return (
         <View style={styles.emptyBox}>
           <FontAwesome5 name="users-slash" size={32} color="#4A5568" style={{ marginBottom: 12 }} />
@@ -239,17 +267,14 @@ function RankedUsers({ route, navigation }) {
 
     return (
       <FlatList
-        data={rankedUsers}
-        keyExtractor={(item, idx) => `${item.uname || item.uid}-${idx}`}
+        data={dedupedRankedUsers}
+        keyExtractor={(item, idx) => `${item.resolvedUid || item.uname || item.uid}-${idx}`}
         contentContainerStyle={styles.listContent}
         renderItem={({ item, index }) => {
           const key = item.uname || item.uid;
-          const displayName = usernames[key] || item.username || key;
-          const isSelf =
-            key === userId ||
-            key === 'current_user' ||
-            userIds[key] === userId ||
-            (currentUsername && displayName === currentUsername);
+          const displayName =
+            item.displayName || formatListenerDisplayName(key, usernames[key] || item.username);
+          const isSelf = Boolean(item.isSelf);
           const pct = sanitizeCompatibilityScore(Math.round((Number(item.totalScore) || 0) * 100));
           const accent = getRankAccent(index);
 
@@ -269,8 +294,8 @@ function RankedUsers({ route, navigation }) {
                 onPress={() => {
                   if (isSelf) {
                     navigation.navigate('Profile');
-                  } else if (userIds[key]) {
-                    navigation.navigate('UserProfile', { userId: userIds[key] });
+                  } else if (item.resolvedUid || userIds[key]) {
+                    navigation.navigate('UserProfile', { userId: item.resolvedUid || userIds[key] });
                   }
                 }}
               >
@@ -365,8 +390,6 @@ function RankedUsers({ route, navigation }) {
           <Text style={styles.primaryGraphCtaText}>Launch Interactive Affinity Radar</Text>
         </TouchableOpacity>
       </View>
-
-      <Taskbar navigation={navigation} />
     </SafeAreaView>
   );
 }

@@ -13,7 +13,6 @@ import {
 import { Text } from 'react-native-paper';
 import { Audio } from 'expo-av';
 import { FontAwesome5 } from '@expo/vector-icons';
-import Taskbar from './Taskbar';
 import { normalizeTrack, getHighResImage } from './services/musicApi';
 import { createAudioPreviewController } from './audioPreviewController';
 
@@ -209,8 +208,6 @@ function SongDetailsScreen({ route, navigation }) {
           </View>
         </View>
       </ScrollView>
-
-      <Taskbar navigation={navigation} />
     </SafeAreaView>
   );
 }

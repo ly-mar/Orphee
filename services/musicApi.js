@@ -1,9 +1,13 @@
 // services/musicApi.js
 import axios from 'axios';
 import debounce from 'lodash.debounce';
-import { createItunesSearchClient, sanitizeItunesTrack } from '../utils/itunesSearchUtils';
+import {
+    createItunesSearchClient,
+    deduplicateTracks,
+    sanitizeItunesTrack,
+} from '../utils/itunesSearchUtils';
 
-export { createItunesSearchClient, sanitizeItunesTrack };
+export { createItunesSearchClient, deduplicateTracks, sanitizeItunesTrack };
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const searchCache = new Map();
@@ -85,9 +89,11 @@ export async function searchMusic(query, options = {}) {
         const rawResults = Array.isArray(response.data?.results)
             ? response.data.results
             : [];
-        const normalizedResults = rawResults
-            .filter((item) => item && (item.trackId || item.trackName))
-            .map(normalizeTrack);
+        const normalizedResults = deduplicateTracks(
+            rawResults
+                .filter((item) => item && (item.trackId || item.trackName))
+                .map(normalizeTrack)
+        );
 
         searchCache.set(cacheKey, {
             timestamp: Date.now(),

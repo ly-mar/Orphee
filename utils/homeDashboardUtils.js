@@ -2,7 +2,7 @@
 // Guards HomeScreen dashboard state derivation against null user docs and sparse playlists [BUG-017]
 import { computeLockStateForPlaylist, normalizeYour13List, REQUIRED_YOUR13_COUNT } from './playlistUtils';
 
-export function deriveHomeDashboardState(user, userDoc) {
+export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
   const uid = user?.uid ?? null;
   if (!uid) {
     return {
@@ -16,10 +16,22 @@ export function deriveHomeDashboardState(user, userDoc) {
     };
   }
 
-  const rawList = userDoc?.your13 ?? userDoc?.songs ?? userDoc?.playlist ?? [];
+  const rawList =
+    playlistDoc?.songs ??
+    playlistDoc?.your13 ??
+    userDoc?.your13 ??
+    userDoc?.songs ??
+    userDoc?.playlist ??
+    [];
   const your13 = normalizeYour13List(rawList);
   const lockState = computeLockStateForPlaylist(your13, uid);
-  const rawName = String(userDoc?.username ?? userDoc?.displayName ?? user?.displayName ?? '').trim();
+  const rawName = String(
+    userDoc?.displayName ??
+      userDoc?.username ??
+      playlistDoc?.username ??
+      user?.displayName ??
+      ''
+  ).trim();
 
   return {
     isAuthenticated: true,

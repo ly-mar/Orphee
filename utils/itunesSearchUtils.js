@@ -14,6 +14,31 @@ export function sanitizeItunesTrack(raw) {
   };
 }
 
+export function deduplicateTracks(tracks = []) {
+  if (!Array.isArray(tracks)) return [];
+  const seenIds = new Set();
+  const seenSignatures = new Set();
+  const unique = [];
+
+  for (const track of tracks) {
+    if (!track || typeof track !== 'object') continue;
+    const idKey = track.trackId != null ? String(track.trackId) : '';
+    const title = String(track.trackName ?? track.title ?? '').trim().toLowerCase();
+    const artist = String(track.artistName ?? track.artist ?? '').trim().toLowerCase();
+    const sigKey = title && artist ? `${title}::${artist}` : '';
+
+    if ((idKey && seenIds.has(idKey)) || (sigKey && seenSignatures.has(sigKey))) {
+      continue;
+    }
+
+    if (idKey) seenIds.add(idKey);
+    if (sigKey) seenSignatures.add(sigKey);
+    unique.push(track);
+  }
+
+  return unique;
+}
+
 export function createItunesSearchClient({ fetchFn = global.fetch, limit = 25 } = {}) {
   let latestToken = 0;
   let activeController = null;
@@ -41,7 +66,7 @@ export function createItunesSearchClient({ fetchFn = global.fetch, limit = 25 } 
       if (myToken !== latestToken) return null;
 
       const list = Array.isArray(data?.results) ? data.results : [];
-      return list.map(sanitizeItunesTrack).filter(Boolean);
+      return deduplicateTracks(list.map(sanitizeItunesTrack).filter(Boolean));
     } catch (err) {
       if (err?.name === 'AbortError' || myToken !== latestToken) return null;
       return [];

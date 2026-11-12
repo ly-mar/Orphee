@@ -15,6 +15,7 @@ import {
   NavigationContainer,
   createNavigationContainerRef,
 } from '@react-navigation/native';
+import { AppNavigationTheme } from './GlobalStyles';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Provider as PaperProvider } from 'react-native-paper';
 import Constants from 'expo-constants';
@@ -144,10 +145,14 @@ export default function App() {
     <WebTestingWrapper navigationRef={navigationRef}>
       <LockProvider>
         <PaperProvider>
-          <NavigationContainer ref={navigationRef}>
+          <NavigationContainer ref={navigationRef} theme={AppNavigationTheme}>
             <Stack.Navigator
               initialRouteName={currentUser ? 'Home' : 'Welcome'}
-              screenOptions={{ headerShown: false }}
+              screenOptions={{
+                headerShown: false,
+                cardStyle: { backgroundColor: '#0A0C10' },
+                contentStyle: { backgroundColor: '#0A0C10' },
+              }}
             >
               <Stack.Screen name="Welcome" component={WelcomeScreen} />
               <Stack.Screen name="Home" component={HomeScreen} />

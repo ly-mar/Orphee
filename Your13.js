@@ -307,10 +307,12 @@ function Your13({ navigation }) {
         await lockChoices(60);
         Alert.alert('Saved & Locked', 'All 13 choices saved! Locked for 60 seconds.');
       } else {
+        const remaining = Math.max(0, 13 - selectedChoices.length);
         Alert.alert(
           'Saved',
-          `${selectedChoices.length} of 13 choices saved. Pick ${13 - selectedChoices.length
-          } more songs to complete Your13.`
+          `${selectedChoices.length} of 13 choices saved. Pick ${remaining} ${
+            remaining === 1 ? 'more song' : 'more songs'
+          } to complete Your13.`
         );
       }
     } catch (error) {
@@ -658,6 +660,7 @@ function Your13({ navigation }) {
                     {!(isLocked && selectedChoices.length === 13) && (
                       <TouchableOpacity
                         style={styles.slotRemoveBtn}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         onPress={() => removeChoice(song)}
                       >
                         <Text style={styles.slotRemoveText}>✕</Text>
@@ -934,19 +937,19 @@ const styles = StyleSheet.create({
   },
   slotRemoveBtn: {
     position: 'absolute',
-    top: 4,
-    right: 4,
+    top: 3,
+    right: 3,
     backgroundColor: '#E53E3E',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 3,
   },
   slotRemoveText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 'bold',
     lineHeight: 12,
   },
@@ -979,7 +982,7 @@ const styles = StyleSheet.create({
   },
   resultsList: {
     paddingHorizontal: 16,
-    paddingBottom: 80,
+    paddingBottom: 28,
   },
   resultCard: {
     backgroundColor: '#16181F',
@@ -1108,6 +1111,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 8,
+    marginBottom: 94, // Lifts Save & Find Music Twins cleanly above floating Taskbar dock
     backgroundColor: '#12141A',
     borderTopWidth: 1,
     borderTopColor: '#20242E',

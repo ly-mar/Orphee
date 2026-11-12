@@ -22,9 +22,20 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { FontAwesome5 } from '@expo/vector-icons';
-import Taskbar from './Taskbar';
+import moment from 'moment';
 import { getHighResImage } from './services/musicApi';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
+
+const formatActivityTimestamp = (rawDate) => {
+  if (!rawDate || rawDate === 'Recent') return 'Recent';
+  const str = String(rawDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const parsed = moment(str, 'YYYY-MM-DD', true);
+    return parsed.isValid() ? parsed.format('MMM D, YYYY') : str;
+  }
+  const parsed = moment(str);
+  return parsed.isValid() ? parsed.format('MMM D, YYYY • h:mm A') : str;
+};
 
 const NotifPage = ({ route, navigation }) => {
   const userId = route?.params?.userId ?? auth.currentUser?.uid;
@@ -163,7 +174,7 @@ const NotifPage = ({ route, navigation }) => {
       )}
       <View style={styles.cardBody}>
         <Text style={styles.postCreatorText}>@{item.postCreator}</Text>
-        <Text style={styles.dateText}>{item.date}</Text>
+        <Text style={styles.dateText}>{formatActivityTimestamp(item.date)}</Text>
         <Text style={styles.titleText}>{item.title}</Text>
         <Text style={styles.artistText}>{item.artist}</Text>
         <Text style={styles.likesText}>❤️ {item.likesCount} Likes</Text>
@@ -187,13 +198,17 @@ const NotifPage = ({ route, navigation }) => {
           style={[styles.tab, activeTab === 'activity' && styles.activeTab]}
           onPress={() => setActiveTab('activity')}
         >
-          <Text style={styles.tabText}>Activity</Text>
+          <Text style={[styles.tabText, activeTab === 'activity' && styles.activeTabText]}>
+            Activity
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'likedByMe' && styles.activeTab]}
           onPress={() => setActiveTab('likedByMe')}
         >
-          <Text style={styles.tabText}>Liked by Me</Text>
+          <Text style={[styles.tabText, activeTab === 'likedByMe' && styles.activeTabText]}>
+            Liked by Me
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -216,10 +231,6 @@ const NotifPage = ({ route, navigation }) => {
       )}
 
       {error && <Text style={styles.errorText}>{error}</Text>}
-
-      <View style={styles.taskbarContainer}>
-        <Taskbar />
-      </View>
     </SafeAreaView>
   );
 };
@@ -259,15 +270,19 @@ const styles = StyleSheet.create({
   },
   tabs: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    marginHorizontal: 16,
     marginVertical: 14,
     gap: 10,
   },
   tab: {
-    paddingVertical: 8,
-    paddingHorizontal: 22,
-    borderRadius: 10,
-    backgroundColor: '#161922',
+    flex: 1,
+    minHeight: 42,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#151821',
     borderWidth: 1,
     borderColor: '#242936',
   },
@@ -278,7 +293,10 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#94A3B8',
+  },
+  activeTabText: {
+    color: '#0A0C10',
   },
   list: {
     paddingHorizontal: 16,

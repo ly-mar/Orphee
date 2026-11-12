@@ -1,5 +1,5 @@
 // __tests__/audioPreview.test.js
-import { createAudioPreviewController } from '../audioPreviewController';
+import { createAudioPreviewController, resolveFreshPreviewUrl } from '../audioPreviewController';
 
 const mockUnloadAsync = jest.fn(() => Promise.resolve());
 const mockStopAsync = jest.fn(() => Promise.resolve());
@@ -63,6 +63,31 @@ describe('AddSong & Memoir Screen Blur/Unmount Audio Cleanup [BUG-008]', () => {
     await controller.dispose();
     const playAfterDispose = await controller.play('https://audio-ssl.itunes.apple.com/after-unmount.m4a');
     expect(playAfterDispose).toBe(false);
+  });
+
+  test('falls back to HTML5 window.Audio on web when expo-av playback throws and resolves fresh iTunes preview URLs [VR-022]', async () => {
+    const originalWindow = global.window;
+    const mockPlay = jest.fn(() => Promise.resolve());
+    const mockPause = jest.fn();
+    global.window = {
+      Audio: jest.fn(() => ({ play: mockPlay, pause: mockPause, src: '', onended: null })),
+    };
+    mockCreateAsync.mockRejectedValueOnce(new Error('expo-av unsupported codec'));
+
+    const controller = createAudioPreviewController();
+    const started = await controller.play('https://audio-ssl.itunes.apple.com/track-fallback.m4a');
+    expect(started).toBe(true);
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+
+    await controller.dispose();
+    expect(mockPause).toHaveBeenCalledTimes(1);
+    global.window = originalWindow;
+
+    const fresh = await resolveFreshPreviewUrl(
+      { trackId: 42, trackName: 'Blinding Lights', artistName: 'The Weeknd' },
+      async () => [{ trackId: 42, trackName: 'Blinding Lights', previewUrl: 'https://fresh.m4a' }]
+    );
+    expect(fresh).toBe('https://fresh.m4a');
   });
 });
 

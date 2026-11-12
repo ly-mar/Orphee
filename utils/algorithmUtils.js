@@ -188,3 +188,79 @@ export function clampProgressValue(value) {
     if (!Number.isFinite(num)) return 0;
     return Math.max(0, Math.min(1, num));
 }
+
+export function formatListenerDisplayName(rawIdentifier, resolvedUsername = null) {
+    const cleanResolved = String(resolvedUsername || '').trim();
+    if (cleanResolved && !/^[A-Za-z0-9_-]{24,}$/.test(cleanResolved)) {
+        return cleanResolved.startsWith('mock_')
+            ? cleanResolved
+                  .replace(/^mock_/, '')
+                  .replace(/[_-]+/g, ' ')
+                  .replace(/\b\w/g, (c) => c.toUpperCase())
+            : cleanResolved;
+    }
+
+    const raw = String(rawIdentifier || '').trim();
+    if (!raw || raw === 'current_user') return 'You';
+    if (raw.startsWith('mock_')) {
+        return raw
+            .replace(/^mock_/, '')
+            .replace(/[_-]+/g, ' ')
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    if (/^[A-Za-z0-9_-]{24,}$/.test(raw)) {
+        return 'Listener';
+    }
+    return raw;
+}
+
+export function deduplicateRankedUsers(
+    rankedUsers = [],
+    { usernamesMap = {}, userIdsMap = {}, currentUserId = null, currentUsername = null } = {}
+) {
+    if (!Array.isArray(rankedUsers)) return [];
+    const byCanonicalKey = new Map();
+
+    const cleanCurrentName = String(currentUsername || '').trim().toLowerCase();
+
+    for (const user of rankedUsers) {
+        if (!user || typeof user !== 'object') continue;
+        const key = user.uname || user.uid;
+        if (!key) continue;
+
+        const resolvedUid = userIdsMap[key] || user.uid || key;
+        const rawDisplayName = usernamesMap[key] || user.username || key;
+        const formattedName = formatListenerDisplayName(key, rawDisplayName);
+
+        const isSelf =
+            key === currentUserId ||
+            key === 'current_user' ||
+            resolvedUid === currentUserId ||
+            (cleanCurrentName && formattedName.toLowerCase() === cleanCurrentName);
+
+        const canonicalKey = isSelf
+            ? '__self__'
+            : resolvedUid && !/^\s*$/.test(resolvedUid) && resolvedUid !== key
+                ? `uid:${resolvedUid}`
+                : `name:${formattedName.toLowerCase()}`;
+
+        const score = Number(user.totalScore) || 0;
+        const existing = byCanonicalKey.get(canonicalKey);
+
+        if (!existing || score > (Number(existing.totalScore) || 0)) {
+            byCanonicalKey.set(canonicalKey, {
+                ...existing,
+                ...user,
+                uname: key,
+                resolvedUid,
+                displayName: formattedName,
+                isSelf,
+                totalScore: existing ? Math.max(score, Number(existing.totalScore) || 0) : score,
+            });
+        }
+    }
+
+    return Array.from(byCanonicalKey.values()).sort(
+        (a, b) => (Number(b.totalScore) || 0) - (Number(a.totalScore) || 0)
+    );
+}

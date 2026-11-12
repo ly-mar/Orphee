@@ -29,17 +29,10 @@ import { Feather } from '@expo/vector-icons';
 import Taskbar from './Taskbar';
 import { normalizeTrack, getHighResImage } from './services/musicApi';
 import { createAudioPreviewController } from './audioPreviewController';
-import { createItunesSearchClient } from './utils/itunesSearchUtils';
+import { createItunesSearchClient, deduplicateTracks } from './utils/itunesSearchUtils';
+import { showNonBlockingNotice } from './crossPlatformAlert';
 
 export { normalizeTrack };
-
-const showAlert = (title, message) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert(`${title ? title + ': ' : ''}${message}`);
-    } else {
-        Alert.alert(title, message);
-    }
-};
 
 export default function Memoir({ route, navigation }) {
     const routeTrack = route?.params?.song || route?.params?.track || null;
@@ -50,6 +43,15 @@ export default function Memoir({ route, navigation }) {
     const [loadingSearch, setLoadingSearch] = useState(false);
     const [saving, setSaving] = useState(false);
     const [username, setUsername] = useState('Sigma');
+
+    useEffect(() => {
+        const incoming = route?.params?.song || route?.params?.track;
+        if (incoming) {
+            setSelectedTrack(normalizeTrack(incoming));
+            setSearchResults([]);
+            setSearchQuery('');
+        }
+    }, [route?.params?.song, route?.params?.track]);
 
     const itunesClientRef = useRef(null);
     if (!itunesClientRef.current) {
@@ -98,7 +100,7 @@ export default function Memoir({ route, navigation }) {
             setLoadingSearch(true);
             const results = await itunesClientRef.current.search(searchQuery);
             if (results !== null) {
-                setSearchResults(results.map(normalizeTrack));
+                setSearchResults(deduplicateTracks(results.map(normalizeTrack)));
                 setLoadingSearch(false);
             }
         }, 350);
@@ -111,15 +113,15 @@ export default function Memoir({ route, navigation }) {
     const handleSaveMemoir = async () => {
         const uid = auth.currentUser?.uid;
         if (!uid) {
-            showAlert('Authentication Required', 'Please log in to publish a song memoir.');
+            showNonBlockingNotice('Authentication Required', 'Please log in to publish a song memoir.');
             return;
         }
         if (!selectedTrack) {
-            showAlert('Select a Song', 'Please search for a song above and tap "+" to attach it to your memoir.');
+            showNonBlockingNotice('Select a Song', 'Please search for a song above and tap "+" to attach it to your memoir.');
             return;
         }
         if (!comment.trim()) {
-            showAlert('Add Reflection', 'Please write your reflection or memory in the text box below.');
+            showNonBlockingNotice('Add Reflection', 'Please write your reflection or memory in the text box below.');
             return;
         }
 
@@ -197,30 +199,36 @@ export default function Memoir({ route, navigation }) {
                 console.log('Individual memoir collection addDoc bypassed (production enforces memoirs/{userId}):', collectionErr?.message);
             }
 
-            showAlert('Memoir Published', 'Your song memory has been added to your profile.');
+            // Reset state and loading spinner BEFORE triggering user feedback/navigation [VR-013]
+            setSaving(false);
             setComment('');
             setSelectedTrack(null);
             setSearchQuery('');
+            setSearchResults([]);
+            showNonBlockingNotice('Memoir Published', 'Your song memory has been added to your profile.');
             navigation.navigate('ProfileScreen');
         } catch (error) {
             console.error('Error saving memoir:', error);
-            showAlert('Save Error', error?.message || 'Could not save your memoir. Please try again.');
-        } finally {
             setSaving(false);
+            showNonBlockingNotice('Save Error', error?.message || 'Could not save your memoir. Please try again.');
         }
     };
+
+    const canGoBack = Boolean(navigation?.canGoBack?.());
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.headerRow}>
-                    <TouchableOpacity
-                        style={styles.backCircleBtn}
-                        onPress={() => navigation.goBack()}
-                    >
-                        <Feather name="chevron-left" size={20} color="#FFFFFF" />
-                    </TouchableOpacity>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
+                    {canGoBack && (
+                        <TouchableOpacity
+                            style={styles.backCircleBtn}
+                            onPress={() => navigation.goBack()}
+                        >
+                            <Feather name="chevron-left" size={20} color="#FFFFFF" />
+                        </TouchableOpacity>
+                    )}
+                    <View style={{ flex: 1, marginLeft: canGoBack ? 12 : 0 }}>
                         <Text style={styles.screenTitle}>Add Song Memoir</Text>
                         <Text style={styles.screenSub}>
                             Attach a personal story or timestamp to a track
@@ -255,7 +263,13 @@ export default function Memoir({ route, navigation }) {
                                     setSearchQuery('');
                                 }}
                             >
-                                <Image source={{ uri: item.imageUrl }} style={styles.resultCover} />
+                                {item.imageUrl ? (
+                                    <Image source={{ uri: item.imageUrl }} style={styles.resultCover} />
+                                ) : (
+                                    <View style={[styles.resultCover, { backgroundColor: '#1E2433', alignItems: 'center', justifyContent: 'center' }]}>
+                                        <Feather name="music" size={16} color="#64748B" />
+                                    </View>
+                                )}
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.resultTitle} numberOfLines={1}>
                                         {item.trackName}
@@ -272,7 +286,13 @@ export default function Memoir({ route, navigation }) {
 
                 {selectedTrack && (
                     <View style={styles.selectedTrackCard}>
-                        <Image source={{ uri: selectedTrack.imageUrl }} style={styles.selectedArt} />
+                        {selectedTrack.imageUrl ? (
+                            <Image source={{ uri: selectedTrack.imageUrl }} style={styles.selectedArt} />
+                        ) : (
+                            <View style={[styles.selectedArt, { backgroundColor: '#1E2433', alignItems: 'center', justifyContent: 'center' }]}>
+                                <Feather name="music" size={18} color="#64748B" />
+                            </View>
+                        )}
                         <View style={{ flex: 1 }}>
                             <Text style={styles.selectedTitle}>{selectedTrack.trackName}</Text>
                             <Text style={styles.selectedArtist}>{selectedTrack.artistName}</Text>
