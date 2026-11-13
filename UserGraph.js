@@ -483,7 +483,7 @@ function UserGraph({ route, navigation }) {
     return (
       <SafeAreaView style={styles.emptyContainer}>
         <ActivityIndicator size="large" color="#FF8C00" style={{ marginBottom: 14 }} />
-        <Text style={styles.emptyTitle}>Music Affinity Radar</Text>
+        <Text style={styles.emptyTitle}>Affinity Radar</Text>
         <Text style={styles.emptySubtext}>Computing your community constellation...</Text>
       </SafeAreaView>
     );
@@ -493,7 +493,7 @@ function UserGraph({ route, navigation }) {
     return (
       <SafeAreaView style={styles.emptyContainer}>
         <FontAwesome5 name="satellite" size={40} color="#FF8C00" style={{ marginBottom: 14 }} />
-        <Text style={styles.emptyTitle}>Music Affinity Radar</Text>
+        <Text style={styles.emptyTitle}>Affinity Radar</Text>
         <Text style={styles.emptySubtext}>
           No ranked connections available yet. Curate your 13 signature tracks to plot your community constellation!
         </Text>
@@ -526,7 +526,7 @@ function UserGraph({ route, navigation }) {
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
-          <Text style={styles.topHeaderTitle}>Sonic Affinity Radar</Text>
+          <Text style={styles.topHeaderTitle}>Affinity Radar</Text>
           <Text style={styles.topHeaderSub}>
             Tap any node to inspect musical DNA • Drag to pan
           </Text>

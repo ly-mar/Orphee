@@ -4,6 +4,7 @@ import {
   MAX_CHAT_MESSAGE_LENGTH,
   buildDeterministicChatId,
   openOrCreateDirectChat,
+  buildLastMessageUpdate,
 } from '../utils/chatMessageUtils';
 
 describe('ChatScreen Outgoing Message Validation & Bounds [BUG-019]', () => {
@@ -86,6 +87,21 @@ describe('Direct Chat Canonical Opener [VR-007]', () => {
       }),
       { merge: true }
     );
+  });
+
+  test('buildLastMessageUpdate truncates text, strips whitespace and attaches timestamp', () => {
+    const update = buildLastMessageUpdate({
+      text: '   Hey what tracks are in your 13?   ',
+      senderId: 'user_42',
+      timestamp: 1700000000000,
+    });
+
+    expect(update).toEqual({
+      lastMessageText: 'Hey what tracks are in your 13?',
+      lastMessageAt: 1700000000000,
+      lastSenderId: 'user_42',
+      updatedAt: 1700000000000,
+    });
   });
 });
 

@@ -16,6 +16,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 import { useNavigation } from '@react-navigation/native';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { UserAvatar } from './utils/avatarUtils';
 
 const FriendsScreen = ({ route }) => {
   const userId = route?.params?.userId ?? auth.currentUser?.uid;
@@ -136,8 +137,8 @@ const FriendsScreen = ({ route }) => {
     if (activeTab === 'followers') {
       return {
         icon: 'user-friends',
-        title: 'No Followers Yet',
-        subtitle: 'Publish your Top 13 tracks and music memoirs so kindred listeners can follow you.',
+        title: 'No Friends Yet',
+        subtitle: 'Connect with kindred listeners from Music Twins and Affinity Radar.',
       };
     }
     if (activeTab === 'following') {
@@ -168,8 +169,10 @@ const FriendsScreen = ({ route }) => {
         style={styles.userInfoRow}
         onPress={() => navigateToUserProfile(item[0])}
       >
-        <Image
-          source={{ uri: item[1]?.profileImageUrl || defaultAvatar }}
+        <UserAvatar
+          imageUrl={item[1]?.profileImageUrl}
+          name={item[1]?.username || 'Listener'}
+          size={44}
           style={styles.userThumbnail}
         />
         <Text style={styles.itemText}>{item[1]?.username || 'Listener'}</Text>
@@ -191,8 +194,10 @@ const FriendsScreen = ({ route }) => {
         style={styles.userInfoRow}
         onPress={() => navigateToUserProfile(item[0])}
       >
-        <Image
-          source={{ uri: item[1]?.profileImageUrl || defaultAvatar }}
+        <UserAvatar
+          imageUrl={item[1]?.profileImageUrl}
+          name={item[1]?.username || 'Listener'}
+          size={44}
           style={styles.userThumbnail}
         />
         <Text style={styles.itemText}>{item[1]?.username || 'Listener'}</Text>
@@ -214,8 +219,10 @@ const FriendsScreen = ({ route }) => {
         style={styles.userInfoRow}
         onPress={() => navigateToUserProfile(item[0])}
       >
-        <Image
-          source={{ uri: item[1]?.profileImageUrl || defaultAvatar }}
+        <UserAvatar
+          imageUrl={item[1]?.profileImageUrl}
+          name={item[1]?.username || 'User'}
+          size={44}
           style={styles.userThumbnail}
         />
         <Text style={styles.itemText}>{item[1]?.username || 'User'}</Text>
@@ -237,8 +244,10 @@ const FriendsScreen = ({ route }) => {
         style={styles.userInfoRow}
         onPress={() => navigateToUserProfile(item[0])}
       >
-        <Image
-          source={{ uri: item[1]?.profileImageUrl || defaultAvatar }}
+        <UserAvatar
+          imageUrl={item[1]?.profileImageUrl}
+          name={item[1]?.username || 'User'}
+          size={44}
           style={styles.userThumbnail}
         />
         <Text style={styles.itemText}>{item[1]?.username || 'User'}</Text>
@@ -276,7 +285,7 @@ const FriendsScreen = ({ route }) => {
       {/* Tabs */}
       <View style={styles.tabs}>
         {[
-          { key: 'followers', label: 'Followers' },
+          { key: 'followers', label: 'Friends' },
           { key: 'following', label: 'Following' },
           { key: 'sentRequests', label: 'Sent' },
           { key: 'receivedRequests', label: 'Received' },

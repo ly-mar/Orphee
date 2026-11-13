@@ -112,14 +112,18 @@ export const acceptFriendRequest = async (userId, requesterUid) => {
     const requesterData = receivedRequests[requesterUid];
 
     if (requesterData) {
-      // Move from receivedRequests to followers
+      // Symmetrically update both users' friends / followers / following
       await updateDoc(currentUserRef, {
         [`followers.${requesterUid}`]: requesterData,
+        [`following.${requesterUid}`]: requesterData,
         [`receivedRequests.${requesterUid}`]: deleteField(),
       });
 
-      // Move from sentRequests to following
       await updateDoc(requesterRef, {
+        [`followers.${userId}`]: {
+          uid: userId,
+          username: currentUsername,
+        },
         [`following.${userId}`]: {
           uid: userId,
           username: currentUsername,
@@ -127,11 +131,11 @@ export const acceptFriendRequest = async (userId, requesterUid) => {
         [`sentRequests.${userId}`]: deleteField(),
       });
 
-      Alert.alert("Success", "Friend request accepted.");
+      toast.show({ kind: 'success', message: 'Friend request accepted.' });
     }
   } catch (error) {
     console.error('Error accepting friend request:', error);
-    Alert.alert("Error", "Failed to accept friend request.");
+    toast.show({ kind: 'error', message: 'Failed to accept friend request.' });
   }
 };
 

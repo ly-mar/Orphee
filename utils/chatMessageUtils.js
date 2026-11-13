@@ -124,3 +124,13 @@ export async function openOrCreateDirectChat({
   };
 }
 
+export function buildLastMessageUpdate({ text = '', senderId = '', timestamp = Date.now() } = {}) {
+  const cleanText = String(text ?? '').trim().slice(0, MAX_CHAT_MESSAGE_LENGTH);
+  return {
+    lastMessageText: cleanText,
+    lastMessageAt: timestamp,
+    lastSenderId: String(senderId ?? '').trim(),
+    updatedAt: timestamp,
+  };
+}
+

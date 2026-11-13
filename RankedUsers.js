@@ -21,6 +21,7 @@ import {
   deduplicateRankedUsers,
   formatListenerDisplayName,
 } from './utils/algorithmUtils';
+import { UserAvatar } from './utils/avatarUtils';
 
 export { sanitizeCompatibilityScore };
 
@@ -305,8 +306,10 @@ function RankedUsers({ route, navigation }) {
                   </Text>
                 </View>
 
-                <Image
-                  source={{ uri: userImages[key] || DEFAULT_AVATAR }}
+                <UserAvatar
+                  imageUrl={userImages[key]}
+                  name={displayName}
+                  size={48}
                   style={[styles.avatar, { borderColor: accent.border }]}
                 />
 
@@ -317,7 +320,7 @@ function RankedUsers({ route, navigation }) {
                   </Text>
                   <Text style={styles.subRoleText} numberOfLines={1}>
                     {pct >= 75
-                      ? 'Sonic Soulmate'
+                      ? 'Top Music Twin'
                       : pct >= 45
                         ? 'High Vibe Match'
                         : pct >= 20
@@ -366,7 +369,7 @@ function RankedUsers({ route, navigation }) {
 
         <View style={styles.headerTitleWrap}>
           <Text style={styles.title}>Music Twins</Text>
-          <Text style={styles.subtitle}>Ranked by Sonic Compatibility</Text>
+          <Text style={styles.subtitle}>Ranked by Music Compatibility</Text>
         </View>
 
         <TouchableOpacity style={styles.headerGraphBtn} onPress={navigateToGraph}>
@@ -387,7 +390,7 @@ function RankedUsers({ route, navigation }) {
       <View style={styles.bottomBar}>
         <TouchableOpacity style={styles.primaryGraphCta} onPress={navigateToGraph}>
           <FontAwesome5 name="satellite-dish" size={16} color="#000000" style={{ marginRight: 8 }} />
-          <Text style={styles.primaryGraphCtaText}>Launch Interactive Affinity Radar</Text>
+          <Text style={styles.primaryGraphCtaText}>Launch Affinity Radar</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

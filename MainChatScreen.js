@@ -11,10 +11,22 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { db, auth } from './firebaseConfig';
-import { collection, query, where, onSnapshot, getDoc, doc } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  getDoc,
+  getDocs,
+  doc,
+  orderBy,
+  limit,
+} from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { FontAwesome5 } from '@expo/vector-icons';
+import moment from 'moment';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
+import { UserAvatar } from './utils/avatarUtils';
 
 const DEFAULT_AVATAR =
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120';
@@ -79,9 +91,31 @@ const MainChatScreen = ({ navigation }) => {
               }
             }
 
+            let lastMessageText = chatData.lastMessageText || null;
+            let lastMessageAt = chatData.lastMessageAt || null;
+
+            if (!lastMessageText) {
+              try {
+                const msgsSnap = await getDocs(
+                  query(
+                    collection(db, 'chats', chatDoc.id, 'messages'),
+                    orderBy('timestamp', 'desc'),
+                    limit(1)
+                  )
+                );
+                if (!msgsSnap.empty) {
+                  const mData = msgsSnap.docs[0].data();
+                  lastMessageText = mData.text || null;
+                  lastMessageAt = mData.timestamp || null;
+                }
+              } catch (_) { }
+            }
+
             return {
               id: chatDoc.id,
               ...chatData,
+              lastMessageText,
+              lastMessageAt,
               otherUserId: otherParticipantId,
               username,
               profilePicUrl,
@@ -89,8 +123,11 @@ const MainChatScreen = ({ navigation }) => {
           });
 
           const chatList = await Promise.all(chatPromises);
+          const activeChats = chatList.filter((c) =>
+            Boolean(c.lastMessageText || c.lastMessageAt || c.isExplicit)
+          );
           if (isMounted) {
-            setChats(chatList);
+            setChats(activeChats.length > 0 ? activeChats : chatList);
           }
         } catch (error) {
           console.error('Error fetching chat data:', error);
@@ -147,13 +184,24 @@ const MainChatScreen = ({ navigation }) => {
               onPress={() => openChat(item.id, item.username, item.otherUserId)}
               style={styles.chatCard}
             >
-              <Image
-                source={{ uri: item.profilePicUrl || DEFAULT_AVATAR }}
+              <UserAvatar
+                imageUrl={item.profilePicUrl}
+                name={item.username}
+                size={48}
                 style={styles.chatAvatar}
               />
               <View style={styles.chatDetails}>
-                <Text style={styles.chatName}>@{item.username}</Text>
-                <Text style={styles.lastMessage}>Tap to open conversation</Text>
+                <View style={styles.chatHeaderRow}>
+                  <Text style={styles.chatName}>@{item.username}</Text>
+                  {item.lastMessageAt ? (
+                    <Text style={styles.chatTimeText}>
+                      {moment(item.lastMessageAt).fromNow()}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.lastMessage} numberOfLines={1}>
+                  {item.lastMessageText || 'No messages yet'}
+                </Text>
               </View>
               <FontAwesome5 name="chevron-right" size={14} color="#718096" />
             </TouchableOpacity>
@@ -208,6 +256,17 @@ const styles = StyleSheet.create({
   },
   chatDetails: {
     flex: 1,
+  },
+  chatHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  chatTimeText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginRight: 6,
   },
   chatName: {
     fontSize: 16,

@@ -30,7 +30,7 @@ import FadingCarousel from './FadingCarousel';
 import UserModerationModal from './UserModerationModal';
 import { openOrCreateDirectChat } from './utils/chatMessageUtils';
 import { normalizeYour13List } from './utils/playlistUtils';
-import { normalizeAndSortMediaList } from './utils/avatarUtils';
+import { normalizeAndSortMediaList, UserAvatar } from './utils/avatarUtils';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -304,12 +304,13 @@ const UserProfileScreen = ({ route, navigation }) => {
                 images={mediaList.map((item) => item.resolvedUrl).filter(Boolean)}
                 duration={3000}
               />
-            ) : userProfileImage ? (
-              <Image source={{ uri: userProfileImage }} style={styles.profileImage} />
             ) : (
-              <Image
-                source={require('./assets/john-mark-arnold-soMvIOHmdgM-unsplash.jpg')}
+              <UserAvatar
+                imageUrl={userProfileImage}
+                name={username || 'Listener'}
+                size={104}
                 style={styles.profileImage}
+                borderRadius={52}
               />
             )}
           </View>

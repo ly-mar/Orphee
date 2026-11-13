@@ -4,6 +4,9 @@ import {
   MAX_FIRESTORE_DATA_URL_BYTES,
   validateAndNormalizeProfileUpdate,
   normalizeAndSortMediaList,
+  isGenericStockAvatar,
+  getAvatarColor,
+  getInitials,
 } from '../utils/avatarUtils';
 
 describe('Avatar Upload Quota Fallback [BUG-005]', () => {
@@ -89,5 +92,34 @@ describe('UpdateProfileScreen Validation & Media Sorting [VR-002]', () => {
     expect(media[0].id).toBe('2');
     expect(media[0].resolvedUrl).toBe('https://cdn/new.jpg');
     expect(media[1].resolvedUrl).toBe('https://cdn/old.jpg');
+  });
+});
+
+describe('Avatar Initials and Stock Avatar Detection [VR-009]', () => {
+  test('correctly identifies generic stock avatars or invalid URLs', () => {
+    expect(isGenericStockAvatar(null)).toBe(true);
+    expect(isGenericStockAvatar('')).toBe(true);
+    expect(isGenericStockAvatar('https://i.pravatar.cc/150?img=3')).toBe(true);
+    expect(isGenericStockAvatar('https://images.unsplash.com/photo-123')).toBe(true);
+    expect(isGenericStockAvatar('https://firebasestorage.googleapis.com/v0/b/app/avatar.jpg')).toBe(false);
+    expect(isGenericStockAvatar('data:image/jpeg;base64,abc')).toBe(false);
+  });
+
+  test('extracts single or two-letter initials correctly from various name formats', () => {
+    expect(getInitials('John Doe')).toBe('JD');
+    expect(getInitials('@john_doe')).toBe('J');
+    expect(getInitials('Listener')).toBe('L');
+    expect(getInitials('A B C')).toBe('AB');
+    expect(getInitials('')).toBe('?');
+    expect(getInitials(null)).toBe('?');
+  });
+
+  test('generates deterministic color from name seed', () => {
+    const c1 = getAvatarColor('Marly');
+    const c2 = getAvatarColor('Marly');
+    const c3 = getAvatarColor('Alex');
+    expect(c1).toBe(c2);
+    expect(typeof c1).toBe('string');
+    expect(c1.startsWith('#')).toBe(true);
   });
 });

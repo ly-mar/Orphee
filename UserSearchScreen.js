@@ -17,6 +17,7 @@ import { auth, db } from './firebaseConfig';
 import { collection, query, limit, getDocs, getDoc, doc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { filterUsersSafely } from './utils/userAndFeedbackUtils';
+import { UserAvatar } from './utils/avatarUtils';
 
 const UserSearchScreen = () => {
   const [queryText, setQueryText] = useState('');
@@ -133,21 +134,13 @@ const UserSearchScreen = () => {
   };
 
   const renderAvatar = (item) => {
-    const uri = item.profileImageUrl;
-    const hasValidAvatar =
-      typeof uri === 'string' &&
-      (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('data:image/'));
-
-    if (hasValidAvatar) {
-      return <Image source={{ uri }} style={styles.profileImage} />;
-    }
-
-    const label = String(item.displayName || item.username || 'L').trim();
-    const initials = label.slice(0, 2).toUpperCase();
     return (
-      <View style={styles.initialsAvatar}>
-        <Text style={styles.initialsText}>{initials}</Text>
-      </View>
+      <UserAvatar
+        imageUrl={item.profileImageUrl}
+        name={item.displayName || item.username}
+        size={44}
+        style={styles.profileImage}
+      />
     );
   };
 
@@ -243,7 +236,7 @@ const UserSearchScreen = () => {
               <Text style={styles.stateTitle}>
                 {hasSearched
                   ? `No listeners found matching "${queryText.trim()}"`
-                  : 'Discover Sonic Twins & Friends'}
+                  : 'Discover Music Twins & Friends'}
               </Text>
               <Text style={styles.stateSub}>
                 {hasSearched

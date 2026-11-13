@@ -18,6 +18,7 @@ import {
   onSnapshot,
   addDoc,
   getDoc,
+  setDoc,
   doc,
 } from 'firebase/firestore';
 import { loadUserProfilePic } from './UploadProfilePicture';
@@ -25,7 +26,12 @@ import { sendExpoPushNotification } from './HandlingFriends';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 import { createAsyncActionLock } from './utils/actionLockUtils';
-import { validateOutgoingChatMessage, MAX_CHAT_MESSAGE_LENGTH } from './utils/chatMessageUtils';
+import {
+  validateOutgoingChatMessage,
+  buildLastMessageUpdate,
+  MAX_CHAT_MESSAGE_LENGTH,
+} from './utils/chatMessageUtils';
+import { UserAvatar } from './utils/avatarUtils';
 import UserModerationModal from './UserModerationModal';
 
 const DEFAULT_AVATAR =
@@ -116,12 +122,20 @@ const ChatScreen = ({ route, navigation }) => {
       }
 
       try {
+        const now = Date.now();
         const messagesRef = collection(db, 'chats', chatId, 'messages');
         await addDoc(messagesRef, {
           text: textToSend,
-          timestamp: Date.now(),
+          timestamp: now,
           userId,
         });
+
+        const chatDocRef = doc(db, 'chats', chatId);
+        await setDoc(
+          chatDocRef,
+          buildLastMessageUpdate({ text: textToSend, senderId: userId, timestamp: now }),
+          { merge: true }
+        );
       } catch (error) {
         console.error('Error sending message:', error);
       }
@@ -147,8 +161,10 @@ const ChatScreen = ({ route, navigation }) => {
             }
           }}
         >
-          <Image
-            source={{ uri: userProfilePic || DEFAULT_AVATAR }}
+          <UserAvatar
+            imageUrl={userProfilePic}
+            name={username}
+            size={36}
             style={styles.profileImage}
           />
           <Text style={styles.username} numberOfLines={1}>@{username}</Text>

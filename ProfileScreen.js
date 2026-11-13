@@ -821,7 +821,7 @@ function ProfileScreen({ navigation }) {
                   activeTab === 'sonicTwin' && styles.categoryPillTextActive,
                 ]}
               >
-                Sonic Twin
+                Music Twins
               </Text>
             </TouchableOpacity>
 
@@ -885,7 +885,7 @@ function ProfileScreen({ navigation }) {
                   <TouchableOpacity
                     style={styles.iridescentStarCircle}
                     onPress={() => navigation.navigate('UserGraph')}
-                    accessibilityLabel="Open Sonic Affinity Radar"
+                    accessibilityLabel="Open Affinity Radar"
                   >
                     <Ionicons name="sparkles" size={16} color="#FFFFFF" />
                   </TouchableOpacity>
@@ -1086,7 +1086,7 @@ function ProfileScreen({ navigation }) {
                   {featuredTrack
                     ? `${featuredTrack.artistName || featuredTrack.artist} • #1 in ${userInfo?.username || 'Sigma'
                     }'s 13`
-                    : 'Curate your 13 signature tracks to unlock Sonic Twin matching.'}
+                    : 'Curate your 13 signature tracks to unlock Music Twins matching.'}
                 </Text>
 
                 <View style={styles.lavenderActionsRow}>
@@ -1363,7 +1363,7 @@ function ProfileScreen({ navigation }) {
               activeOpacity={0.9}
             >
               <View style={styles.lavenderLeftCol}>
-                <Text style={styles.lavenderCardTitle}>Sonic Twin Engine</Text>
+                <Text style={styles.lavenderCardTitle}>Affinity Radar</Text>
                 <Text style={styles.lavenderCardSub}>
                   Compare your 13 tracks against the TuneHub community graph.
                 </Text>
@@ -1371,7 +1371,7 @@ function ProfileScreen({ navigation }) {
                   <View style={styles.deepPurplePlayBtn}>
                     <Ionicons name="analytics" size={16} color="#FFFFFF" />
                   </View>
-                  <Text style={styles.exploreGraphText}>Launch Affinity Graph →</Text>
+                  <Text style={styles.exploreGraphText}>Launch Affinity Radar →</Text>
                 </View>
               </View>
             </TouchableOpacity>
