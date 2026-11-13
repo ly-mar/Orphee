@@ -123,9 +123,9 @@ function HomeScreen({ navigation }) {
                   <Text style={styles.cardTitle}>The Collective Groove</Text>
                   <Text style={styles.cardText}>Community-curated music shelves organized by mood & vibe</Text>
                   <Button
-                    mode="contained"
-                    style={styles.cardButton}
-                    buttonColor="#6E8D82"
+                    mode="outlined"
+                    style={[styles.cardButton, styles.secondaryCardButton]}
+                    buttonColor="#151821"
                     textColor="#FFFFFF"
                     labelStyle={styles.buttonLabel}
                   >
@@ -275,6 +275,10 @@ const styles = StyleSheet.create({
   cardButton: {
     borderRadius: 10,
     paddingVertical: 2,
+  },
+  secondaryCardButton: {
+    borderColor: '#FF8C00',
+    borderWidth: 1,
   },
   buttonLabel: {
     fontSize: 13,

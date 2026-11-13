@@ -219,7 +219,7 @@ export default function UploadProfilePicture({ navigation }) {
           onPress={handleUpload}
           disabled={!selectedUri || uploading}
         >
-          <Text style={styles.primaryBtnText}>
+          <Text style={[styles.primaryBtnText, (!selectedUri || uploading) && styles.btnDisabledText]}>
             {uploading ? 'Saving Portrait...' : 'Save Profile Portrait'}
           </Text>
         </TouchableOpacity>
@@ -309,14 +309,20 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D4F458',
   },
   btnDisabled: {
-    opacity: 0.5,
+    backgroundColor: '#1E2430',
+    borderColor: '#242936',
   },
   primaryBtnText: {
     color: '#0B0C10',
     fontSize: 14,
     fontWeight: '800',
+  },
+  btnDisabledText: {
+    color: '#64748B',
   },
   cancelBtn: {
     marginTop: 14,

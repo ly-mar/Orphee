@@ -17,6 +17,7 @@ import { auth } from './firebaseConfig';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { createAsyncActionLock } from './utils/actionLockUtils';
 import { mapFirebaseAuthError } from './utils/authUtils';
+import { confirm, toast } from './crossPlatformAlert';
 
 import {
   PRIVACY_POLICY_URL,
@@ -40,16 +41,25 @@ const SettingsScreen = ({ route, navigation }) => {
   const actionLockRef = useRef(createAsyncActionLock());
 
   const handleLogout = () => {
-    return actionLockRef.current(async () => {
-      try {
-        await signOut(auth);
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Welcome' }],
+    confirm({
+      title: 'Log Out',
+      message: 'Are you sure you want to log out of your TuneHub account?',
+      confirmLabel: 'Log Out',
+      cancelLabel: 'Cancel',
+      destructive: false,
+      onConfirm: () => {
+        actionLockRef.current(async () => {
+          try {
+            await signOut(auth);
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Welcome' }],
+            });
+          } catch (error) {
+            toast.show({ kind: 'error', message: mapFirebaseAuthError(error) });
+          }
         });
-      } catch (error) {
-        Alert.alert('Error', mapFirebaseAuthError(error));
-      }
+      },
     });
   };
 
@@ -65,9 +75,8 @@ const SettingsScreen = ({ route, navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topHeader}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <FontAwesome5 name="arrow-left" size={16} color="#FFF" />
-          <Text style={styles.backButtonText}>Back to Profile</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} accessibilityLabel="Go back">
+          <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
         <View style={{ width: 60 }} />
@@ -169,9 +178,8 @@ const SettingsScreen = ({ route, navigation }) => {
         <View style={styles.logoutContainer}>
           <Button
             icon="logout"
-            mode="contained"
+            mode="outlined"
             onPress={handleLogout}
-            buttonColor="#FF3B30"
             textColor="#FFFFFF"
             style={styles.logoutButton}
           >
@@ -252,15 +260,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1A1E29',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 8,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
   },
   backButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
-    marginLeft: 6,
   },
   headerTitle: {
     color: '#FFFFFF',
@@ -299,7 +309,11 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     width: '90%',
-    borderRadius: 10,
+    borderRadius: 12,
+    backgroundColor: '#151821',
+    borderColor: '#242936',
+    borderWidth: 1,
+    paddingVertical: 4,
   },
   modalBackdrop: {
     flex: 1,

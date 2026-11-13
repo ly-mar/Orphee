@@ -708,6 +708,13 @@ function ProfileScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          const scrollY = e.nativeEvent?.contentOffset?.y ?? 0;
+          if (scrollY < 120 && activeTab === 'sonicTwin') {
+            setActiveTab('your13');
+          }
+        }}
       >
         {/* TOP AMBIENT HEADER BAR (Design 3: Circular Avatar + Glassmorphic Utility Icons) */}
         <View style={styles.topUtilityHeader}>
@@ -826,11 +833,11 @@ function ProfileScreen({ navigation }) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.categoryPill}
+              style={[styles.categoryPill, styles.categoryLinkPill]}
               onPress={() => navigation.navigate('RankedMusicList')}
               accessibilityLabel="Explore Community Top Charts"
             >
-              <Text style={styles.categoryPillText}>Top Charts →</Text>
+              <Text style={styles.categoryLinkPillText}>Top Charts ↗</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -1566,13 +1573,13 @@ const styles = StyleSheet.create({
   },
   categoryPillsRow: {
     flexDirection: 'row',
-    gap: 10,
-    paddingRight: 12,
+    gap: 8,
+    paddingRight: 24,
   },
   categoryPill: {
     backgroundColor: '#171922',
     paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.06)',
@@ -1589,6 +1596,16 @@ const styles = StyleSheet.create({
   categoryPillTextActive: {
     color: '#0B0C10',
     fontWeight: '800',
+  },
+  categoryLinkPill: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#333B4F',
+  },
+  categoryLinkPillText: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    fontWeight: '600',
   },
   heroCardOuter: {
     width: '100%',

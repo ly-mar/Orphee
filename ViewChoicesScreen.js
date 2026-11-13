@@ -153,8 +153,8 @@ function ViewChoicesScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topHeader}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Back to Your13</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} accessibilityLabel="Go back">
+          <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Your Choices ({choices.length}/13)</Text>
         <View style={{ width: 60 }} />
@@ -208,9 +208,13 @@ const styles = StyleSheet.create({
   },
   backButton: {
     backgroundColor: '#1A1D24',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 8,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   backButtonText: {
     color: '#FFFFFF',

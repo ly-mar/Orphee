@@ -4,6 +4,13 @@ import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 
+export function getActiveTabName(routeName) {
+  if (routeName === 'TheCollective' || routeName === 'ThemeDetails') {
+    return 'Home';
+  }
+  return routeName || 'ProfileScreen';
+}
+
 export default function Taskbar({ navigation: propNavigation }) {
   const hookNavigation = useNavigation();
   const navigation = propNavigation || hookNavigation;
@@ -13,6 +20,8 @@ export default function Taskbar({ navigation: propNavigation }) {
     const route = useRoute();
     if (route?.name) currentRouteName = route.name;
   } catch (_) { }
+
+  const activeTabName = getActiveTabName(currentRouteName);
 
   const navItems = [
     { name: 'Home', icon: 'home', lib: 'Feather' },
@@ -26,7 +35,7 @@ export default function Taskbar({ navigation: propNavigation }) {
     <View style={styles.floatingDockWrapper} pointerEvents="box-none">
       <View style={styles.pillContainer}>
         {navItems.map((item) => {
-          const isActive = currentRouteName === item.name;
+          const isActive = activeTabName === item.name;
           return (
             <TouchableOpacity
               key={item.name}

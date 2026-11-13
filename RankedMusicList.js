@@ -143,7 +143,7 @@ const CURATED_COMMUNITY_SEED = [
 
 const NeonText = ({ text, style }) => (
   <View style={style}>
-    <Text style={[styles.neonText, styles.neonShadow]}>{text}</Text>
+    <Text style={styles.neonText}>{text}</Text>
   </View>
 );
 
@@ -596,9 +596,9 @@ const RankedMusicList = ({ navigation }) => {
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.backButton}
+            accessibilityLabel="Go back"
           >
-            <Icon name="arrow-back" size={20} color="#FFFFFF" />
-            <Text style={styles.backButtonText}>Back</Text>
+            <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
 
           <NeonText text="Community Charts" style={styles.neonTitle} />
@@ -620,7 +620,7 @@ const RankedMusicList = ({ navigation }) => {
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
             <Text style={styles.metricValue}>{totalPicks}</Text>
-            <Text style={styles.metricLabel}>13 Picks</Text>
+            <Text style={styles.metricLabel}>TOTAL PICKS</Text>
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
@@ -739,18 +739,19 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    backgroundColor: '#1E2430',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 8,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   backButtonText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
-    marginLeft: 4,
   },
   refreshButton: {
     backgroundColor: 'rgba(255, 140, 0, 0.15)',
@@ -758,6 +759,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 140, 0, 0.4)',
     padding: 7,
     borderRadius: 8,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   neonText: {
     fontSize: 22,
@@ -765,11 +770,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
   },
-  neonShadow: {
-    textShadowColor: '#FF8C00',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-  },
+  neonShadow: {},
   neonTitle: {
     alignItems: 'center',
   },

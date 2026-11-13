@@ -182,8 +182,7 @@ const UserSearchScreen = () => {
           style={styles.backBtn}
           accessibilityLabel="Go back"
         >
-          <Feather name="arrow-left" size={16} color="#FFFFFF" />
-          <Text style={styles.backBtnText}>Back</Text>
+          <Text style={styles.backBtnText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Find Listeners</Text>
         <View style={{ width: 68 }} />
@@ -270,10 +269,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1A1E29',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 10,
-    gap: 6,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
   },
   backBtnText: {
     color: '#FFFFFF',
