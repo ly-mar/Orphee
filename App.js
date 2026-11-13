@@ -148,8 +148,10 @@ export default function App() {
           <NavigationContainer ref={navigationRef} theme={AppNavigationTheme}>
             <Stack.Navigator
               initialRouteName={currentUser ? 'Home' : 'Welcome'}
+              detachInactiveScreens={false}
               screenOptions={{
                 headerShown: false,
+                detachPreviousScreen: false,
                 cardStyle: { backgroundColor: '#0A0C10' },
                 contentStyle: { backgroundColor: '#0A0C10' },
               }}

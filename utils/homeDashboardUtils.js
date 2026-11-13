@@ -4,9 +4,11 @@ import { computeLockStateForPlaylist, normalizeYour13List, REQUIRED_YOUR13_COUNT
 
 export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
   const uid = user?.uid ?? null;
+  const isHydrated = Boolean(userDoc !== null && userDoc !== undefined);
   if (!uid) {
     return {
       isAuthenticated: false,
+      isHydrated: false,
       uid: null,
       displayName: 'Listener',
       your13: [],
@@ -35,6 +37,7 @@ export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
 
   return {
     isAuthenticated: true,
+    isHydrated,
     uid,
     displayName: rawName || 'Listener',
     your13,

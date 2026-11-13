@@ -43,6 +43,8 @@ function Pickerchoosers() {
   const themeTitle = resolveThemeTitle(themeId, route?.params?.theme);
 
   const [songs, setSongs] = useState([]);
+  const songsRef = useRef(songs);
+  songsRef.current = songs;
   const [votedIds, setVotedIds] = useState({});
   const [failedArtIds, setFailedArtIds] = useState({});
   const [loading, setLoading] = useState(true);
@@ -51,7 +53,9 @@ function Pickerchoosers() {
 
   const loadSongs = useCallback(async () => {
     try {
-      setLoading(true);
+      if (songsRef.current.length === 0) {
+        setLoading(true);
+      }
       const songsCollectionRef = collection(db, 'collective', themeId, 'songs');
       const songsQuery = query(songsCollectionRef, orderBy('score', 'desc'));
       const songsSnapshot = await getDocs(songsQuery);

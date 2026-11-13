@@ -52,6 +52,8 @@ const FALLBACK_THEMES = Object.keys(themeImages).map((id) => ({
 
 function TheCollective() {
   const [themes, setThemes] = useState([]);
+  const themesRef = useRef(themes);
+  themesRef.current = themes;
   const [lastVisibleDoc, setLastVisibleDoc] = useState(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -61,7 +63,9 @@ function TheCollective() {
 
   const fetchInitialThemes = useCallback(async () => {
     try {
-      setLoadingInitial(true);
+      if (themesRef.current.length === 0) {
+        setLoadingInitial(true);
+      }
       const q = query(collection(db, 'collective'), orderBy('name'), limit(PAGE_SIZE));
       const snap = await getDocs(q);
 

@@ -72,12 +72,18 @@ function HomeScreen({ navigation }) {
           >
             <View style={styles.contentWrapper}>
               <View style={styles.headerBlock}>
-                <Text style={styles.headerText}>Shape Your Community with Chorus</Text>
-                <Text style={styles.subHeaderText}>
-                  {dashboardState.isAuthenticated
-                    ? `Welcome, ${dashboardState.displayName} • ${dashboardState.progressCount}/${dashboardState.requiredCount} Your13 tracks ready`
-                    : 'The social platform designed for music lovers & party regulars'}
-                </Text>
+                <Text style={styles.headerText}>Shape Your Community with TuneHub</Text>
+                {dashboardState.isAuthenticated && !dashboardState.isHydrated ? (
+                  <View style={styles.skeletonSubHeader}>
+                    <View style={styles.skeletonPill} />
+                  </View>
+                ) : (
+                  <Text style={styles.subHeaderText}>
+                    {dashboardState.isAuthenticated
+                      ? `Welcome, ${dashboardState.displayName} • ${dashboardState.progressCount}/${dashboardState.requiredCount} Your13 tracks ready`
+                      : 'The social platform designed for music lovers & party regulars'}
+                  </Text>
+                )}
               </View>
 
               {/* Your13 Card */}
@@ -222,6 +228,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
+  skeletonSubHeader: {
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  skeletonPill: {
+    height: 12,
+    width: 210,
+    borderRadius: 6,
+    backgroundColor: '#151821',
+  },
   card: {
     backgroundColor: '#161922',
     borderRadius: 16,
@@ -237,6 +255,7 @@ const styles = StyleSheet.create({
   cardCover: {
     height: 160,
     borderRadius: 0,
+    backgroundColor: '#151821',
   },
   cardContent: {
     padding: 16,

@@ -7,6 +7,7 @@ describe('HomeScreen Dashboard State Resilience [BUG-017]', () => {
     const state = deriveHomeDashboardState(null, null);
     expect(state).toEqual({
       isAuthenticated: false,
+      isHydrated: false,
       uid: null,
       displayName: 'Listener',
       your13: [],
@@ -27,10 +28,17 @@ describe('HomeScreen Dashboard State Resilience [BUG-017]', () => {
     };
     const state = deriveHomeDashboardState({ uid: 'u-1' }, rawDoc);
     expect(state.isAuthenticated).toBe(true);
+    expect(state.isHydrated).toBe(true);
     expect(state.displayName).toBe('SonicCurator');
     expect(state.your13).toHaveLength(1);
     expect(state.isLocked).toBe(true);
     expect(state.progressCount).toBe(1);
+  });
+
+  test('marks state unhydrated when user is authenticated but userDoc is null [VR-005]', () => {
+    const state = deriveHomeDashboardState({ uid: 'u-pending' }, null);
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.isHydrated).toBe(false);
   });
 
   test('accepts playlists/{uid} as 3rd argument and resolves username + unlocked state [VR-004]', () => {
