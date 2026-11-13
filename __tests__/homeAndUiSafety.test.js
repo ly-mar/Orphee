@@ -1,6 +1,7 @@
 // __tests__/homeAndUiSafety.test.js
 import { deriveHomeDashboardState } from '../utils/homeDashboardUtils';
 import { sanitizeNotificationPrefs } from '../utils/notificationPrefsUtils';
+import { PRIVACY_POLICY_TEXT, SECURITY_ROW_LABEL } from '../utils/legalUtils';
 
 describe('HomeScreen Dashboard State Resilience [BUG-017]', () => {
   test('returns safe locked default state when user or userDoc is null/undefined', () => {
@@ -73,6 +74,15 @@ describe('NotificationSettings Preference Normalization [BUG-018]', () => {
       dailyMemoirReminder: false,
       collectiveUpdates: true,
     });
+  });
+});
+
+describe('Privacy Policy & Legal Text Cleanliness [VR-011]', () => {
+  test('contains zero developer guideline annotations and correctly references security menu row', () => {
+    expect(PRIVACY_POLICY_TEXT).not.toMatch(/Apple Guideline/i);
+    expect(PRIVACY_POLICY_TEXT).not.toMatch(/5\.1\.1/i);
+    expect(PRIVACY_POLICY_TEXT).toContain(SECURITY_ROW_LABEL);
+    expect(SECURITY_ROW_LABEL).toBe('Security & Account Deletion');
   });
 });
 
