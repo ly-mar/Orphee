@@ -16,7 +16,7 @@ import { MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import {
   PRIVACY_POLICY_TEXT,
   TERMS_OF_SERVICE_TEXT,
-} from './SettingsScreen';
+} from './utils/legalUtils';
 
 const WelcomeScreen = () => {
   const navigation = useNavigation();

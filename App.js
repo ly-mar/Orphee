@@ -100,11 +100,20 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user || null);
-      if (initializing) {
+    let isMounted = true;
+
+    // Safety timeout: Never leave user stuck on splash screen for more than 1.5s
+    const splashTimeout = setTimeout(() => {
+      if (isMounted) {
         setInitializing(false);
       }
+    }, 1500);
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!isMounted) return;
+      clearTimeout(splashTimeout);
+      setCurrentUser(user || null);
+      setInitializing(false);
 
       if (user?.uid) {
         registerForPushNotificationsAsync(user.uid);
@@ -128,8 +137,12 @@ export default function App() {
       }
     });
 
-    return () => unsubscribe();
-  }, [initializing]);
+    return () => {
+      isMounted = false;
+      clearTimeout(splashTimeout);
+      unsubscribe();
+    };
+  }, []);
 
   if (initializing) {
     return (

@@ -398,6 +398,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   deviceFrame: {
+    flex: 1,
     height: '100%',
     backgroundColor: '#000000',
     overflow: 'hidden',
