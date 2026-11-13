@@ -14,6 +14,7 @@ import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebaseConfig';
 import { createAsyncActionLock } from './utils/actionLockUtils';
 import { buildModerationReportPayload } from './utils/userAndFeedbackUtils';
+import { toast } from './crossPlatformAlert';
 
 export default function UserModerationModal({
   visible,
@@ -55,19 +56,19 @@ export default function UserModerationModal({
         }
 
         onClose?.();
-        Alert.alert(
-          alsoBlock ? 'User Blocked & Reported' : 'Report Submitted',
-          alsoBlock
+        toast.show({
+          kind: 'success',
+          message: alsoBlock
             ? `@${targetUsername} has been blocked and reported to our moderation team.`
-            : 'Thank you. Our moderation team will review this report within 24 hours.'
-        );
+            : 'Thank you. Our moderation team will review this report within 24 hours.',
+        });
 
         if (alsoBlock) {
           onBlockedSuccess?.();
         }
       } catch (err) {
         console.error('Moderation action error:', err);
-        Alert.alert('Error', 'Unable to submit report right now. Please try again.');
+        toast.show({ kind: 'error', message: 'Unable to submit report right now. Please try again.' });
       } finally {
         setSubmitting(false);
       }

@@ -2,6 +2,7 @@ import { doc, getDoc, updateDoc, deleteField, setDoc, onSnapshot } from 'firebas
 import { db, auth } from './firebaseConfig';
 import { Alert } from 'react-native';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
+import { toast } from './crossPlatformAlert';
 
 // Helper function to fetch user details by userId
 export const fetchUserDetails = async (userId) => {
@@ -77,7 +78,7 @@ export const sendFriendRequest = async (userId, selectedUsername) => {
       },
     });
 
-    Alert.alert("Success", `Friend request sent to ${selectedUsername}.`);
+    toast.show({ kind: 'success', message: `Friend request sent to ${selectedUsername}.` });
 
     await sendExpoPushNotification(
       userId,

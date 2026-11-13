@@ -27,6 +27,7 @@ import { Feather } from '@expo/vector-icons';
 import { db, auth } from './firebaseConfig';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 import { createAsyncActionLock } from './utils/actionLockUtils';
+import { toast } from './crossPlatformAlert';
 import {
   MAX_BIO_LENGTH,
   MAX_DISPLAY_NAME_LENGTH,
@@ -141,17 +142,16 @@ const UpdateProfileScreen = ({ route, navigation }) => {
         setDisplayName(validation.data.displayName);
         setUsername(validation.data.username);
         setBio(validation.data.bio);
-        Alert.alert('Profile Saved', 'Your profile details have been updated.', [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (navigation?.canGoBack?.()) navigation.goBack();
-            },
-          },
-        ]);
+        toast.show({
+          kind: 'success',
+          message: 'Your profile details have been updated.',
+        });
+        if (navigation?.canGoBack?.()) {
+          navigation.goBack();
+        }
       } catch (err) {
         console.error('Error updating profile:', err);
-        Alert.alert('Save Failed', 'Unable to save profile updates right now.');
+        toast.show({ kind: 'error', message: 'Unable to save profile updates right now.' });
       } finally {
         setSaving(false);
       }
@@ -172,10 +172,10 @@ const UpdateProfileScreen = ({ route, navigation }) => {
           { merge: true }
         );
         setProfileImageUrl(imageUrl);
-        Alert.alert('Avatar Updated', 'This photo is now your active profile portrait.');
+        toast.show({ kind: 'success', message: 'This photo is now your active profile portrait.' });
       } catch (err) {
         console.error('Error setting active avatar:', err);
-        Alert.alert('Error', 'Could not update your active avatar.');
+        toast.show({ kind: 'error', message: 'Could not update your active avatar.' });
       } finally {
         setSaving(false);
       }
@@ -188,9 +188,9 @@ const UpdateProfileScreen = ({ route, navigation }) => {
         setDeleting(true);
         await deleteImage(docId, imageUrl);
         setMediaList((prev) => prev.filter((item) => item.id !== docId));
-        Alert.alert('Deleted', 'Photo removed from your gallery.');
+        toast.show({ kind: 'info', message: 'Photo removed from your gallery.' });
       } catch (error) {
-        Alert.alert('Error', 'Failed to delete image.');
+        toast.show({ kind: 'error', message: 'Failed to delete image.' });
         console.error('Error deleting image:', error);
       } finally {
         setDeleting(false);

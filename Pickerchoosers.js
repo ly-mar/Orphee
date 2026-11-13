@@ -27,6 +27,7 @@ import {
 } from 'firebase/firestore';
 import { createAsyncActionLock } from './utils/actionLockUtils';
 import { resolveThemeTitle } from './ThemeDetails';
+import { toast } from './crossPlatformAlert';
 import { normalizeTrack } from './services/musicApi';
 
 const isUsableArtworkUrl = (url) =>
@@ -121,13 +122,12 @@ function Pickerchoosers() {
 
   const addOrIncrementSong = (song) => {
     if (!userId) {
-      Alert.alert('Sign In Required', 'Please sign in before upvoting tracks.');
+      toast.show({ kind: 'info', message: 'Please sign in before upvoting tracks.' });
       return;
     }
 
     const songId = song.id || `${song.trackName}-${song.artistName}`;
     if (votedIds[songId]) {
-      Alert.alert('Vote Already Cast', 'You have already upvoted this track on this shelf.');
       return;
     }
 
@@ -139,7 +139,6 @@ function Pickerchoosers() {
 
         if (existingVote.exists()) {
           setVotedIds((prev) => ({ ...prev, [songId]: true }));
-          Alert.alert('Vote Already Cast', 'You have already voted for this song.');
           return;
         }
 
@@ -160,7 +159,7 @@ function Pickerchoosers() {
         await loadSongs();
       } catch (error) {
         console.error('Error adding or updating song in Firestore:', error);
-        Alert.alert('Vote Failed', 'Unable to submit your vote right now.');
+        toast.show({ kind: 'error', message: 'Unable to submit your vote right now.' });
       }
     });
   };
@@ -252,7 +251,8 @@ function Pickerchoosers() {
                   <TouchableOpacity
                     onPress={() => addOrIncrementSong(song)}
                     style={[styles.voteButton, hasVoted && styles.voteButtonVoted]}
-                    activeOpacity={0.8}
+                    disabled={hasVoted}
+                    activeOpacity={hasVoted ? 1 : 0.8}
                     accessibilityLabel={hasVoted ? 'Already voted' : `Upvote ${song.trackName}`}
                   >
                     <Feather

@@ -35,6 +35,7 @@ import Taskbar from './Taskbar';
 import { createAudioPreviewController } from './audioPreviewController';
 import { normalizeYour13List } from './utils/playlistUtils';
 import { normalizeAndSortMediaList } from './utils/avatarUtils';
+import { confirm, toast } from './crossPlatformAlert';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
@@ -607,28 +608,27 @@ function ProfileScreen({ navigation }) {
       if (selectedMemoir?.id === memoirId) {
         setSelectedMemoir(null);
       }
+      toast.show({ kind: 'info', message: 'Song memoir removed.' });
     } catch (error) {
       console.error('Error deleting memoir:', error);
-      Alert.alert('Delete Failed', 'Could not delete this memoir entry. Please try again.');
+      toast.show({ kind: 'error', message: 'Could not delete this memoir entry.' });
     } finally {
       setDeletingMemoirId(null);
     }
   };
 
-  const handleDeleteMemoir = (memoirId) => {
+  const handleDeleteMemoir = async (memoirId) => {
     if (!memoirId) return;
-    Alert.alert(
-      'Delete Song Memoir?',
-      'This will permanently remove this memoir from your profile.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => executeDeleteMemoir(memoirId),
-        },
-      ]
-    );
+    const ok = await confirm({
+      title: 'Delete Song Memoir?',
+      message: 'This will permanently remove this memoir from your profile.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      destructive: true,
+    });
+    if (ok) {
+      await executeDeleteMemoir(memoirId);
+    }
   };
 
   const formatMemoirDate = (rawTimestamp) => {
