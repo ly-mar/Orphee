@@ -241,10 +241,6 @@ function Your13({ navigation }) {
 
   const handleMusicSelection = async (rawMusic) => {
     if (isLocked && selectedChoices.length === 13) {
-      Alert.alert(
-        'Selection Locked',
-        `Your 13 choices are finalized and locked for ${lockTime} more seconds.`
-      );
       return;
     }
 
@@ -272,19 +268,11 @@ function Your13({ navigation }) {
 
     if (newChoices.length === 13) {
       await lockChoices(60);
-      Alert.alert(
-        'Your13 Complete!',
-        'You have selected all 13 signature tracks! Your collection is now locked for 60 seconds.'
-      );
     }
   };
 
   const removeChoice = async (music) => {
     if (isLocked && selectedChoices.length === 13) {
-      Alert.alert(
-        'Selection Locked',
-        `You can modify your choices in ${lockTime} seconds.`
-      );
       return;
     }
 
@@ -304,8 +292,9 @@ function Your13({ navigation }) {
       setIsSubmitting(false);
 
       if (selectedChoices.length === 13) {
-        await lockChoices(60);
-        Alert.alert('Saved & Locked', 'All 13 choices saved! Locked for 60 seconds.');
+        if (!isLocked) {
+          await lockChoices(60);
+        }
       } else {
         const remaining = Math.max(0, 13 - selectedChoices.length);
         Alert.alert(
@@ -529,8 +518,16 @@ function Your13({ navigation }) {
 
               {isSelected ? (
                 <TouchableOpacity
-                  style={styles.removeActionBtn}
-                  onPress={() => removeChoice(item)}
+                  style={[
+                    styles.removeActionBtn,
+                    isLocked && selectedChoices.length === 13 && { opacity: 0.35 },
+                  ]}
+                  onPress={() => {
+                    if (isLocked && selectedChoices.length === 13) return;
+                    removeChoice(item);
+                  }}
+                  disabled={isLocked && selectedChoices.length === 13}
+                  accessibilityState={{ disabled: isLocked && selectedChoices.length === 13 }}
                 >
                   <Text style={styles.removeActionText}>
                     ✕ Slot #{existingIndex + 1}
@@ -538,9 +535,12 @@ function Your13({ navigation }) {
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
-                  style={[styles.addActionBtn, isFull && styles.disabledActionBtn]}
+                  style={[
+                    styles.addActionBtn,
+                    (isFull || (isLocked && selectedChoices.length === 13)) && styles.disabledActionBtn,
+                  ]}
                   onPress={() => handleMusicSelection(item)}
-                  disabled={isFull}
+                  disabled={isFull || (isLocked && selectedChoices.length === 13)}
                 >
                   <Text style={styles.addActionText}>
                     {isFull ? '13/13 Full' : `+ Slot #${selectedChoices.length + 1}`}
@@ -746,17 +746,27 @@ function Your13({ navigation }) {
       <View style={styles.bottomActionBar}>
         <TouchableOpacity
           onPress={storeChoices}
-          style={styles.actionSaveButton}
-          disabled={isSubmitting}
+          style={[
+            styles.actionSaveButton,
+            isLocked && selectedChoices.length === 13 && styles.disabledSaveButton,
+          ]}
+          disabled={isSubmitting || (isLocked && selectedChoices.length === 13)}
         >
           <FontAwesome5
-            name="check"
+            name={isLocked && selectedChoices.length === 13 ? 'lock' : 'check'}
             size={16}
-            color="#000"
+            color={isLocked && selectedChoices.length === 13 ? '#64748B' : '#000'}
             style={{ marginRight: 6 }}
           />
-          <Text style={styles.actionSaveText}>
-            {selectedChoices.length === 13
+          <Text
+            style={[
+              styles.actionSaveText,
+              isLocked && selectedChoices.length === 13 && styles.disabledSaveText,
+            ]}
+          >
+            {isLocked && selectedChoices.length === 13
+              ? `Locked (${lockTime}s)`
+              : selectedChoices.length === 13
               ? 'Lock & Submit (13/13)'
               : `Save (${selectedChoices.length}/13)`}
           </Text>
@@ -1129,10 +1139,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 8,
   },
+  disabledSaveButton: {
+    backgroundColor: '#1E2430',
+    borderColor: '#242936',
+    borderWidth: 1,
+  },
   actionSaveText: {
     color: '#000000',
     fontSize: 14,
     fontWeight: '700',
+  },
+  disabledSaveText: {
+    color: '#64748B',
   },
   actionRankButton: {
     flex: 1,

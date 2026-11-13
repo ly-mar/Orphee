@@ -52,10 +52,6 @@ function ViewChoicesScreen({ route, navigation }) {
 
   const confirmRemoveChoice = (item) => {
     if (isLocked && choices.length === 13) {
-      Alert.alert(
-        'Selection Locked',
-        `Your 13 choices are locked for ${lockTime} more seconds.`
-      );
       return;
     }
 
@@ -142,7 +138,12 @@ function ViewChoicesScreen({ route, navigation }) {
             icon="delete-outline"
             iconColor={isLocked && choices.length === 13 ? '#555' : '#FC8181'}
             size={22}
-            onPress={() => confirmRemoveChoice(item)}
+            disabled={isLocked && choices.length === 13}
+            style={isLocked && choices.length === 13 ? { opacity: 0.35 } : null}
+            onPress={() => {
+              if (isLocked && choices.length === 13) return;
+              confirmRemoveChoice(item);
+            }}
           />
         </TouchableOpacity>
       </Card>

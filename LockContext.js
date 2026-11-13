@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from './firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
+import { calculateRemainingLockSeconds } from './utils/playlistUtils';
 
 const LockContext = createContext({
   isLocked: false,
@@ -51,8 +52,7 @@ export const LockProvider = ({ children }) => {
       if (storedDuration && storedTimestamp) {
         const durationSec = parseInt(storedDuration, 10);
         const startMs = parseInt(storedTimestamp, 10);
-        const elapsedSec = Math.floor((Date.now() - startMs) / 1000);
-        const remainingSec = durationSec - elapsedSec;
+        const remainingSec = calculateRemainingLockSeconds(startMs, durationSec);
 
         if (remainingSec > 0) {
           setLockTime(remainingSec);
