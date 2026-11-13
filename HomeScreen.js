@@ -14,6 +14,14 @@ function HomeScreen({ navigation }) {
   const [currentUser, setCurrentUser] = useState(auth.currentUser || null);
   const [userProfileDoc, setUserProfileDoc] = useState(null);
   const [userPlaylistDoc, setUserPlaylistDoc] = useState(null);
+  const [safetyHydrate, setSafetyHydrate] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSafetyHydrate(true);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -33,9 +41,10 @@ function HomeScreen({ navigation }) {
       buildQuery: () => doc(db, 'users', uid),
       onSnapshotFn: onSnapshot,
       onNext: (snapshot) => {
-        setUserProfileDoc(snapshot && snapshot.exists() ? snapshot.data() : null);
+        setUserProfileDoc(snapshot && snapshot.exists() ? snapshot.data() : {});
       },
       onError: (err) => {
+        setUserProfileDoc({});
         if (err?.code !== 'permission-denied') {
           console.warn('HomeScreen profile listener error:', err);
         }
@@ -50,9 +59,10 @@ function HomeScreen({ navigation }) {
       buildQuery: () => doc(db, 'playlists', uid),
       onSnapshotFn: onSnapshot,
       onNext: (snapshot) => {
-        setUserPlaylistDoc(snapshot && snapshot.exists() ? snapshot.data() : null);
+        setUserPlaylistDoc(snapshot && snapshot.exists() ? snapshot.data() : {});
       },
       onError: (err) => {
+        setUserPlaylistDoc({});
         if (err?.code !== 'permission-denied') {
           console.warn('HomeScreen playlist listener error:', err);
         }
@@ -60,7 +70,8 @@ function HomeScreen({ navigation }) {
     });
   }, [currentUser?.uid]);
 
-  const dashboardState = deriveHomeDashboardState(currentUser, userProfileDoc, userPlaylistDoc);
+  const effectiveProfileDoc = userProfileDoc ?? (safetyHydrate ? {} : null);
+  const dashboardState = deriveHomeDashboardState(currentUser, effectiveProfileDoc, userPlaylistDoc);
 
   return (
     <ImageBackground source={backgroundImage} style={styles.backgroundImage}>
@@ -191,14 +202,20 @@ function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   backgroundImage: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     resizeMode: 'cover',
   },
   overlay: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(10, 12, 16, 0.85)',
   },
   container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
   scrollContainer: {
     paddingVertical: 16,

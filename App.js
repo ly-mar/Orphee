@@ -158,17 +158,18 @@ export default function App() {
     <WebTestingWrapper navigationRef={navigationRef}>
       <LockProvider>
         <PaperProvider>
-          <NavigationContainer ref={navigationRef} theme={AppNavigationTheme}>
-            <Stack.Navigator
-              initialRouteName={currentUser ? 'Home' : 'Welcome'}
-              detachInactiveScreens={false}
-              screenOptions={{
-                headerShown: false,
-                detachPreviousScreen: false,
-                cardStyle: { backgroundColor: '#0A0C10' },
-                contentStyle: { backgroundColor: '#0A0C10' },
-              }}
-            >
+          <View style={styles.appRootContainer}>
+            <NavigationContainer ref={navigationRef} theme={AppNavigationTheme}>
+              <Stack.Navigator
+                initialRouteName={currentUser ? 'Home' : 'Welcome'}
+                {...(Platform.OS !== 'web' ? { detachInactiveScreens: false } : {})}
+                screenOptions={{
+                  headerShown: false,
+                  ...(Platform.OS !== 'web' ? { detachPreviousScreen: false } : {}),
+                  cardStyle: { flex: 1, width: '100%', height: '100%', backgroundColor: '#0A0C10' },
+                  contentStyle: { flex: 1, width: '100%', height: '100%', backgroundColor: '#0A0C10' },
+                }}
+              >
               <Stack.Screen name="Welcome" component={WelcomeScreen} />
               <Stack.Screen name="Home" component={HomeScreen} />
               <Stack.Screen name="Your13" component={Your13} />
@@ -206,6 +207,7 @@ export default function App() {
               {/* <Stack.Screen name="SimilarityFinder" component={SimilarityFinderWidget} /> */}
             </Stack.Navigator>
           </NavigationContainer>
+          </View>
         </PaperProvider>
       </LockProvider>
     </WebTestingWrapper>
@@ -213,6 +215,12 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  appRootContainer: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#0A0C10',
+  },
   splashContainer: {
     flex: 1,
     backgroundColor: '#0A0C10',

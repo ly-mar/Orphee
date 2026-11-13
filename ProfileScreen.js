@@ -1478,10 +1478,14 @@ function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#0B0C10',
   },
   loadingScreen: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#0B0C10',
     justifyContent: 'center',
     alignItems: 'center',

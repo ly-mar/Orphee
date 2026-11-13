@@ -399,9 +399,13 @@ const styles = StyleSheet.create({
   },
   deviceFrame: {
     flex: 1,
+    width: '100%',
+    maxWidth: 430,
     height: '100%',
-    backgroundColor: '#000000',
+    backgroundColor: '#0A0C10',
     overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
   },
   framedShadow: {
     borderLeftWidth: 1,

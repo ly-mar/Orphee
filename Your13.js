@@ -791,6 +791,8 @@ function Your13({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#0D0E12',
   },
   headerContainer: {
