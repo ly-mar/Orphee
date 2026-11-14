@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import Taskbar from './Taskbar';
 import { createAsyncActionLock } from './utils/actionLockUtils';
+import { getCachedThemes, setCachedThemes } from './utils/sessionCache';
 
 const PAGE_SIZE = 20;
 
@@ -51,11 +52,14 @@ const FALLBACK_THEMES = Object.keys(themeImages).map((id) => ({
 }));
 
 function TheCollective() {
-  const [themes, setThemes] = useState([]);
+  const cachedThemes = getCachedThemes();
+  const [themes, setThemes] = useState(
+    cachedThemes && cachedThemes.length > 0 ? cachedThemes : FALLBACK_THEMES
+  );
   const themesRef = useRef(themes);
   themesRef.current = themes;
   const [lastVisibleDoc, setLastVisibleDoc] = useState(null);
-  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [loadingInitial, setLoadingInitial] = useState(!cachedThemes || cachedThemes.length === 0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const navigation = useNavigation();
@@ -77,6 +81,7 @@ function TheCollective() {
           name: d.data().name || d.id,
         }));
         setThemes(list);
+        setCachedThemes(list);
         setLastVisibleDoc(snap.docs[snap.docs.length - 1]);
         setHasMore(snap.docs.length === PAGE_SIZE);
       } else {

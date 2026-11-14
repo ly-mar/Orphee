@@ -36,6 +36,12 @@ import { createAudioPreviewController } from './audioPreviewController';
 import { normalizeYour13List } from './utils/playlistUtils';
 import { normalizeAndSortMediaList } from './utils/avatarUtils';
 import { confirm, toast } from './crossPlatformAlert';
+import {
+  getCachedUserProfile,
+  setCachedUserProfile,
+  getCachedMemoirs,
+  setCachedMemoirs,
+} from './utils/sessionCache';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
@@ -141,13 +147,31 @@ export const compressImageForUpload = async (uri, maxDim = 400, quality = 0.72) 
 };
 
 function ProfileScreen({ navigation }) {
-  const [userInfo, setUserInfo] = useState(null);
-  const [selectedSongs, setSelectedSongs] = useState([]);
-  const [memoirs, setMemoirs] = useState([]);
-  const [mediaList, setMediaList] = useState([]);
-  const [friendsCount, setFriendsCount] = useState(0);
+  const currentUid = auth.currentUser?.uid;
+  const cachedUser = currentUid ? getCachedUserProfile(currentUid) : null;
+  const cachedMemoirsList = currentUid ? getCachedMemoirs(currentUid) : null;
+
+  const [userInfo, setUserInfo] = useState(
+    cachedUser || {
+      username: auth.currentUser?.displayName || 'Sigma',
+      displayName: auth.currentUser?.displayName || 'Sigma',
+      email: auth.currentUser?.email || '',
+      profileImageUrl: auth.currentUser?.photoURL || '',
+      bio: 'Curating sonic worlds, 13 essential tracks & timeless music memoirs.',
+    }
+  );
+  const [selectedSongs, setSelectedSongs] = useState(
+    cachedUser?.songs || cachedUser?.your13 || []
+  );
+  const [memoirs, setMemoirs] = useState(cachedMemoirsList || []);
+  const [mediaList, setMediaList] = useState(
+    cachedUser?.profileImageUrl
+      ? [{ id: 'primary', imageUrl: cachedUser.profileImageUrl, resolvedUrl: cachedUser.profileImageUrl }]
+      : []
+  );
+  const [friendsCount, setFriendsCount] = useState(cachedUser?.friendsCount || 0);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedUser && !auth.currentUser);
   const [uploading, setUploading] = useState(false);
 
   // UI/UX State matching attached reference designs
@@ -426,6 +450,16 @@ function ProfileScreen({ navigation }) {
         const notifSnap = await getDocs(notifQuery);
         setUnreadCount(notifSnap.size);
       } catch (_) { }
+
+      if (currentUid) {
+        setCachedUserProfile(currentUid, {
+          ...userData,
+          profileImageUrl: resolvedAvatar,
+          songs: loadedSongs,
+          friendsCount,
+        });
+        setCachedMemoirs(currentUid, sortedMemoirs);
+      }
     } catch (error) {
       console.error('Error fetching profile data:', error);
       if (!silent) {
@@ -694,11 +728,11 @@ function ProfileScreen({ navigation }) {
   const featuredTrackArt = getHighResImage(featuredTrack?.artworkUrl100 || featuredTrack?.imageUrl);
   const latestMemoir = memoirs[0] || null;
 
-  if (loading) {
+  if (loading && !userInfo) {
     return (
       <SafeAreaView style={styles.loadingScreen}>
         <ActivityIndicator size="large" color="#D4F458" />
-        <Text style={styles.loadingLabel}>Loading @{userInfo?.username || 'Sigma'}...</Text>
+        <Text style={styles.loadingLabel}>Loading profile...</Text>
       </SafeAreaView>
     );
   }

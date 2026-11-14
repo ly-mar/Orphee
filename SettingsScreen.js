@@ -18,6 +18,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { createAsyncActionLock } from './utils/actionLockUtils';
 import { mapFirebaseAuthError } from './utils/authUtils';
 import { confirm, toast } from './crossPlatformAlert';
+import { clearSessionCache } from './utils/sessionCache';
 
 import {
   PRIVACY_POLICY_URL,
@@ -50,6 +51,7 @@ const SettingsScreen = ({ route, navigation }) => {
       onConfirm: () => {
         actionLockRef.current(async () => {
           try {
+            clearSessionCache();
             await signOut(auth);
             navigation.reset({
               index: 0,

@@ -9,12 +9,22 @@ import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 import { deriveHomeDashboardState } from './utils/homeDashboardUtils';
 import Taskbar from './Taskbar';
 import backgroundImage from './assets/bri-tucker-AJD3XJlvBZ8-unsplash.jpg';
+import {
+  getCachedUserProfile,
+  setCachedUserProfile,
+  getCachedUserPlaylist,
+  setCachedUserPlaylist,
+} from './utils/sessionCache';
 
 function HomeScreen({ navigation }) {
+  const currentUid = auth.currentUser?.uid;
+  const cachedProfile = currentUid ? getCachedUserProfile(currentUid) : null;
+  const cachedPlaylist = currentUid ? getCachedUserPlaylist(currentUid) : null;
+
   const [currentUser, setCurrentUser] = useState(auth.currentUser || null);
-  const [userProfileDoc, setUserProfileDoc] = useState(null);
-  const [userPlaylistDoc, setUserPlaylistDoc] = useState(null);
-  const [safetyHydrate, setSafetyHydrate] = useState(false);
+  const [userProfileDoc, setUserProfileDoc] = useState(cachedProfile);
+  const [userPlaylistDoc, setUserPlaylistDoc] = useState(cachedPlaylist);
+  const [safetyHydrate, setSafetyHydrate] = useState(Boolean(cachedProfile));
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -29,6 +39,12 @@ function HomeScreen({ navigation }) {
       if (!user) {
         setUserProfileDoc(null);
         setUserPlaylistDoc(null);
+      } else {
+        const p = getCachedUserProfile(user.uid);
+        if (p) setUserProfileDoc(p);
+        const pl = getCachedUserPlaylist(user.uid);
+        if (pl) setUserPlaylistDoc(pl);
+        if (p || pl) setSafetyHydrate(true);
       }
     });
     return () => unsubscribeAuth();
@@ -41,10 +57,14 @@ function HomeScreen({ navigation }) {
       buildQuery: () => doc(db, 'users', uid),
       onSnapshotFn: onSnapshot,
       onNext: (snapshot) => {
-        setUserProfileDoc(snapshot && snapshot.exists() ? snapshot.data() : {});
+        const data = snapshot && snapshot.exists() ? snapshot.data() : {};
+        setUserProfileDoc(data);
+        if (uid) setCachedUserProfile(uid, data);
+        setSafetyHydrate(true);
       },
       onError: (err) => {
         setUserProfileDoc({});
+        setSafetyHydrate(true);
         if (err?.code !== 'permission-denied') {
           console.warn('HomeScreen profile listener error:', err);
         }
@@ -59,7 +79,9 @@ function HomeScreen({ navigation }) {
       buildQuery: () => doc(db, 'playlists', uid),
       onSnapshotFn: onSnapshot,
       onNext: (snapshot) => {
-        setUserPlaylistDoc(snapshot && snapshot.exists() ? snapshot.data() : {});
+        const data = snapshot && snapshot.exists() ? snapshot.data() : {};
+        setUserPlaylistDoc(data);
+        if (uid) setCachedUserPlaylist(uid, data);
       },
       onError: (err) => {
         setUserPlaylistDoc({});

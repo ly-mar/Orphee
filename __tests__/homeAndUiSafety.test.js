@@ -3,6 +3,13 @@ import { deriveHomeDashboardState } from '../utils/homeDashboardUtils';
 import { sanitizeNotificationPrefs } from '../utils/notificationPrefsUtils';
 import { PRIVACY_POLICY_TEXT, SECURITY_ROW_LABEL } from '../utils/legalUtils';
 import { getActiveTabName } from '../Taskbar';
+import {
+  getCachedUserProfile,
+  setCachedUserProfile,
+  getCachedThemes,
+  setCachedThemes,
+  clearSessionCache,
+} from '../utils/sessionCache';
 
 describe('HomeScreen Dashboard State Resilience [BUG-017]', () => {
   test('returns safe locked default state when user or userDoc is null/undefined', () => {
@@ -95,6 +102,42 @@ describe('Taskbar Active Tab Mapping [VR-013]', () => {
     expect(getActiveTabName('Your13')).toBe('Your13');
     expect(getActiveTabName('ProfileScreen')).toBe('ProfileScreen');
     expect(getActiveTabName('')).toBe('ProfileScreen');
+  });
+});
+
+describe('In-Memory Session Cache [WP-01]', () => {
+  beforeEach(() => {
+    clearSessionCache();
+  });
+
+  test('returns null for missing keys', () => {
+    expect(getCachedUserProfile(null)).toBeNull();
+    expect(getCachedUserProfile('missing-uid')).toBeNull();
+    expect(getCachedThemes()).toBeNull();
+  });
+
+  test('caches and returns user profile data synchronously', () => {
+    setCachedUserProfile('u-1', { username: 'Alpha', bio: 'Music Lover' });
+    const profile = getCachedUserProfile('u-1');
+    expect(profile).toBeDefined();
+    expect(profile.username).toBe('Alpha');
+    expect(profile.bio).toBe('Music Lover');
+    expect(profile.updatedAt).toBeDefined();
+  });
+
+  test('caches and returns themes list synchronously', () => {
+    setCachedThemes([{ id: 'theme-1', name: '80s Rock' }]);
+    const themes = getCachedThemes();
+    expect(themes).toHaveLength(1);
+    expect(themes[0].name).toBe('80s Rock');
+  });
+
+  test('clears all session cache data on logout', () => {
+    setCachedUserProfile('u-1', { username: 'Beta' });
+    setCachedThemes([{ id: 'theme-2', name: '90s HipHop' }]);
+    clearSessionCache();
+    expect(getCachedUserProfile('u-1')).toBeNull();
+    expect(getCachedThemes()).toBeNull();
   });
 });
 

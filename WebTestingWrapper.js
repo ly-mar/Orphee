@@ -5,6 +5,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { loginUser } from './auth-api';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { installWebAlertPolyfill } from './crossPlatformAlert';
+import { clearSessionCache } from './utils/sessionCache';
 
 installWebAlertPolyfill();
 
@@ -55,6 +56,7 @@ export default function WebTestingWrapper({ children, navigationRef }) {
 
   const handleSignOut = async () => {
     try {
+      clearSessionCache();
       await signOut(auth);
       if (navigationRef?.isReady?.()) {
         navigationRef.navigate('Welcome');

@@ -315,7 +315,13 @@ function Pickerchoosers() {
       {/* Obsidian Top Header with Back Navigation */}
       <View style={styles.topHeader}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            if (navigation?.canGoBack?.()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate('TheCollective');
+            }
+          }}
           style={styles.backBtn}
           accessibilityLabel="Go back"
         >
