@@ -3,7 +3,9 @@ import {
   deleteUserAccountSafely,
   mapFirebaseAuthError,
   sanitizeAuthCredentials,
+  executeLogoutTeardown,
 } from '../utils/authUtils';
+import { confirm } from '../crossPlatformAlert';
 
 describe('Account Deletion & Security Settings Safety [BUG-012]', () => {
   test('deletes user Firestore data BEFORE deleting Firebase Auth user while auth token is still valid', async () => {
@@ -56,6 +58,98 @@ describe('Auth Input Normalization & Error Mapping [BUG-013]', () => {
     expect(mapFirebaseAuthError({ code: 'auth/invalid-credential' })).toMatch(/incorrect email or password/i);
     expect(mapFirebaseAuthError({ code: 'auth/email-already-in-use' })).toMatch(/already registered/i);
     expect(mapFirebaseAuthError({ code: 'auth/too-many-requests' })).toMatch(/too many attempts/i);
+  });
+});
+
+describe('Logout Teardown Sequence & Confirmation Resilience [WS-05]', () => {
+  test('executes deterministic teardown sequence in exact order', async () => {
+    const order = [];
+    const audioController = {
+      stopQueue: jest.fn(async () => {
+        order.push('audio:stopQueue');
+      }),
+    };
+    const clearCache = jest.fn(() => {
+      order.push('cache:clear');
+    });
+    const resetLock = jest.fn(() => {
+      order.push('lock:reset');
+    });
+    const signOutFn = jest.fn(async () => {
+      order.push('auth:signOut');
+    });
+    const navigation = {
+      reset: jest.fn(({ routes }) => {
+        order.push(`nav:reset:${routes[0].name}`);
+      }),
+    };
+
+    const res = await executeLogoutTeardown({
+      audioController,
+      clearCache,
+      resetLock,
+      signOutFn,
+      navigation,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(order).toEqual([
+      'audio:stopQueue',
+      'cache:clear',
+      'lock:reset',
+      'auth:signOut',
+      'nav:reset:Welcome',
+    ]);
+  });
+
+  test('tolerates audio error and cache error without blocking auth signOut', async () => {
+    const audioController = {
+      stopQueue: jest.fn(() => {
+        throw new Error('Audio error');
+      }),
+    };
+    const clearCache = jest.fn(() => {
+      throw new Error('Cache error');
+    });
+    const signOutFn = jest.fn().mockResolvedValue(undefined);
+    const navigation = { reset: jest.fn() };
+
+    const res = await executeLogoutTeardown({
+      audioController,
+      clearCache,
+      signOutFn,
+      navigation,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(signOutFn).toHaveBeenCalledTimes(1);
+    expect(navigation.reset).toHaveBeenCalledWith({
+      index: 0,
+      routes: [{ name: 'Welcome' }],
+    });
+  });
+
+  test('confirm executes onConfirm callback on web and resolves promise', async () => {
+    const originalWindow = global.window;
+    global.window = {
+      confirm: jest.fn(() => true),
+    };
+    try {
+      let callbackFired = false;
+      const ok = await confirm({
+        title: 'Log Out',
+        message: 'Are you sure?',
+        onConfirm: () => {
+          callbackFired = true;
+        },
+      });
+
+      expect(global.window.confirm).toHaveBeenCalled();
+      expect(ok).toBe(true);
+      expect(callbackFired).toBe(true);
+    } finally {
+      global.window = originalWindow;
+    }
   });
 });
 

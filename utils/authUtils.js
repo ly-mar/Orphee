@@ -65,3 +65,61 @@ export async function deleteUserAccountSafely({
   }
 }
 
+/**
+ * Deterministic sign-out teardown sequence [WS-05]
+ * 1. Halts any active audio preview queue
+ * 2. Purges in-memory SWR session cache
+ * 3. Resets lock state if applicable
+ * 4. Calls Firebase Auth signOut
+ * 5. Safely resets navigation to the Welcome / unauthenticated route
+ */
+export async function executeLogoutTeardown({
+  audioController = null,
+  clearCache = null,
+  resetLock = null,
+  signOutFn = null,
+  navigation = null,
+} = {}) {
+  // 1. Stop any active audio preview
+  try {
+    if (audioController?.stopQueue) {
+      await audioController.stopQueue();
+    } else if (audioController?.stop) {
+      await audioController.stop();
+    }
+  } catch (_) {}
+
+  // 2. Clear in-memory SWR cache
+  try {
+    if (typeof clearCache === 'function') {
+      clearCache();
+    }
+  } catch (_) {}
+
+  // 3. Reset LockContext local state if provided
+  try {
+    if (typeof resetLock === 'function') {
+      resetLock();
+    }
+  } catch (_) {}
+
+  // 4. Sign out from Firebase Auth
+  if (typeof signOutFn === 'function') {
+    await signOutFn();
+  }
+
+  // 5. Reset navigation safely
+  try {
+    if (navigation?.reset) {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Welcome' }],
+      });
+    } else if (navigation?.navigate) {
+      navigation.navigate('Welcome');
+    }
+  } catch (_) {}
+
+  return { ok: true };
+}
+

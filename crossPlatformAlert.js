@@ -64,6 +64,8 @@ export function confirm({
   confirmLabel = 'Delete',
   cancelLabel = 'Cancel',
   destructive = true,
+  onConfirm,
+  onCancel,
 }) {
   return new Promise((resolve) => {
     if (typeof document !== 'undefined' && document.body && typeof document.createElement === 'function') {
@@ -170,6 +172,15 @@ export function confirm({
         if (backdrop.parentNode) {
           backdrop.parentNode.removeChild(backdrop);
         }
+        if (result && typeof onConfirm === 'function') {
+          try {
+            onConfirm();
+          } catch (_) {}
+        } else if (!result && typeof onCancel === 'function') {
+          try {
+            onCancel();
+          } catch (_) {}
+        }
         resolve(result);
       };
 
@@ -190,14 +201,42 @@ export function confirm({
 
     const text = [title, message].filter(Boolean).join('\n\n');
     if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      return resolve(window.confirm(text));
+      const res = Boolean(window.confirm(text));
+      if (res && typeof onConfirm === 'function') {
+        try {
+          onConfirm();
+        } catch (_) {}
+      } else if (!res && typeof onCancel === 'function') {
+        try {
+          onCancel();
+        } catch (_) {}
+      }
+      return resolve(res);
     }
     Alert.alert(title, message, [
-      { text: cancelLabel, style: 'cancel', onPress: () => resolve(false) },
+      {
+        text: cancelLabel,
+        style: 'cancel',
+        onPress: () => {
+          if (typeof onCancel === 'function') {
+            try {
+              onCancel();
+            } catch (_) {}
+          }
+          resolve(false);
+        },
+      },
       {
         text: confirmLabel,
         style: destructive ? 'destructive' : 'default',
-        onPress: () => resolve(true),
+        onPress: () => {
+          if (typeof onConfirm === 'function') {
+            try {
+              onConfirm();
+            } catch (_) {}
+          }
+          resolve(true);
+        },
       },
     ]);
   });

@@ -16,9 +16,10 @@ import { signOut } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { createAsyncActionLock } from './utils/actionLockUtils';
-import { mapFirebaseAuthError } from './utils/authUtils';
+import { mapFirebaseAuthError, executeLogoutTeardown } from './utils/authUtils';
 import { confirm, toast } from './crossPlatformAlert';
 import { clearSessionCache } from './utils/sessionCache';
+import { audioPreviewController } from './audioPreviewController';
 
 import {
   PRIVACY_POLICY_URL,
@@ -34,6 +35,7 @@ export {
   SECURITY_ROW_LABEL,
   PRIVACY_POLICY_TEXT,
   TERMS_OF_SERVICE_TEXT,
+  executeLogoutTeardown,
 };
 
 const SettingsScreen = ({ route, navigation }) => {
@@ -41,27 +43,27 @@ const SettingsScreen = ({ route, navigation }) => {
   const [legalModalType, setLegalModalType] = useState(null); // 'privacy' | 'terms' | null
   const actionLockRef = useRef(createAsyncActionLock());
 
-  const handleLogout = () => {
-    confirm({
+  const handleLogout = async () => {
+    const ok = await confirm({
       title: 'Log Out',
       message: 'Are you sure you want to log out of your Orphee account?',
       confirmLabel: 'Log Out',
       cancelLabel: 'Cancel',
       destructive: false,
-      onConfirm: () => {
-        actionLockRef.current(async () => {
-          try {
-            clearSessionCache();
-            await signOut(auth);
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Welcome' }],
-            });
-          } catch (error) {
-            toast.show({ kind: 'error', message: mapFirebaseAuthError(error) });
-          }
+    });
+    if (!ok) return;
+
+    await actionLockRef.current(async () => {
+      try {
+        await executeLogoutTeardown({
+          audioController: audioPreviewController,
+          clearCache: clearSessionCache,
+          signOutFn: () => signOut(auth),
+          navigation,
         });
-      },
+      } catch (error) {
+        toast.show({ kind: 'error', message: mapFirebaseAuthError(error) });
+      }
     });
   };
 

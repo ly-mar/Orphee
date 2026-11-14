@@ -87,3 +87,22 @@ export function clearSessionCache() {
   cache.homeDashboardByUid.clear();
   cache.rankedUsersByUid.clear();
 }
+
+export const sessionCache = {
+  clear: clearSessionCache,
+  clearSessionCache,
+  getCachedUserProfile,
+  setCachedUserProfile,
+  getCachedUserPlaylist,
+  setCachedUserPlaylist,
+  getCachedMemoirs,
+  setCachedMemoirs,
+  getCachedThemes,
+  setCachedThemes,
+  getCachedHomeDashboard,
+  setCachedHomeDashboard,
+  getCachedRankedUsers,
+  setCachedRankedUsers,
+};
+
+export default sessionCache;

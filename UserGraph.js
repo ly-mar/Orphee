@@ -109,7 +109,6 @@ function UserGraph({ route, navigation }) {
       return;
     }
 
-    let isMounted = true;
     const loadRankings = async () => {
       try {
         setLoadingRankedUsers(true);

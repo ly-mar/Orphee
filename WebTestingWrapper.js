@@ -6,6 +6,8 @@ import { loginUser } from './auth-api';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { installWebAlertPolyfill } from './crossPlatformAlert';
 import { clearSessionCache } from './utils/sessionCache';
+import { executeLogoutTeardown } from './utils/authUtils';
+import { audioPreviewController } from './audioPreviewController';
 
 installWebAlertPolyfill();
 
@@ -56,11 +58,12 @@ export default function WebTestingWrapper({ children, navigationRef }) {
 
   const handleSignOut = async () => {
     try {
-      clearSessionCache();
-      await signOut(auth);
-      if (navigationRef?.isReady?.()) {
-        navigationRef.navigate('Welcome');
-      }
+      await executeLogoutTeardown({
+        audioController: audioPreviewController,
+        clearCache: clearSessionCache,
+        signOutFn: () => signOut(auth),
+        navigation: navigationRef?.isReady?.() ? navigationRef : null,
+      });
     } catch (e) {
       console.error('Sign out error:', e);
     }

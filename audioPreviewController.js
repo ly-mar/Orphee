@@ -284,7 +284,7 @@ export function createAudioPreviewController({ onStatusChange, onError } = {}) {
     await unloadCurrent();
   }
 
-  return {
+  const controller = {
     play,
     stop: () => {
       if (isQueueActive) {
@@ -302,7 +302,29 @@ export function createAudioPreviewController({ onStatusChange, onError } = {}) {
     onProgress: setOnProgress,
     setOnProgress,
   };
+
+  defaultPreviewControllerInstance = controller;
+  return controller;
 }
+
+let defaultPreviewControllerInstance = null;
+
+export const audioPreviewController = {
+  stopQueue: async () => {
+    if (defaultPreviewControllerInstance) {
+      try {
+        defaultPreviewControllerInstance.stopQueue();
+      } catch (_) {}
+    }
+  },
+  stop: async () => {
+    if (defaultPreviewControllerInstance) {
+      try {
+        defaultPreviewControllerInstance.stop();
+      } catch (_) {}
+    }
+  },
+};
 
 export async function resolveFreshPreviewUrl(song, searchMusicFn) {
   if (!song || typeof searchMusicFn !== 'function') return null;
