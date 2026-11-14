@@ -50,6 +50,7 @@ import MemoirHistoryScreen from './MemoirHistoryScreen';
 import UploadProfilePicture from './UploadProfilePicture';
 import { LockProvider } from './LockContext';
 import ErrorBoundary from './ErrorBoundary';
+import { preloadCoreThemeAssets } from './utils/imagePreloadUtils';
 import ChatScreen from './ChatScreen';
 import MainChatScreen from './MainChatScreen';
 import TheCollective from './TheCollective';
@@ -106,6 +107,7 @@ export default function App() {
 
   useEffect(() => {
     let isMounted = true;
+    preloadCoreThemeAssets();
 
     // Safety timeout: Never leave user stuck on splash screen for more than 1.5s
     const splashTimeout = setTimeout(() => {

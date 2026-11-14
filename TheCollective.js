@@ -147,6 +147,8 @@ function TheCollective() {
           <Image
             source={themeImages[item.id] || themeImages.child_of_the_80s}
             style={styles.cardImage}
+            fadeDuration={150}
+            resizeMethod="resize"
           />
           <View style={styles.imageOverlay} />
         </View>
@@ -218,6 +220,8 @@ const styles = StyleSheet.create({
     position: 'relative',
     width: '100%',
     height: 140,
+    backgroundColor: '#151821',
+    overflow: 'hidden',
   },
   cardImage: {
     width: '100%',
