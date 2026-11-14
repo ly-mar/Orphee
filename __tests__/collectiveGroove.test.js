@@ -11,6 +11,7 @@ import {
   buildCrateRadioQueue,
   resolveTrackSocialAttribution,
 } from '../utils/collectiveGrooveUtils';
+import { appendTrackToYour13Safely } from '../utils/playlistUtils';
 
 describe('collectiveGrooveUtils', () => {
   describe('sanitizeLinerNote', () => {
@@ -263,6 +264,58 @@ describe('collectiveGrooveUtils', () => {
       expect(attr.curatorUsername).toBe('NewFreshName');
       expect(attr.curatorHandle).toBe('@NewFreshName');
       expect(attr.coSignerAvatars[0].avatar).toBe('https://cdn.example.com/fresh.png');
+    });
+  });
+
+  describe('appendTrackToYour13Safely [WP-04]', () => {
+    it('blocks addition when collection is locked', () => {
+      const res = appendTrackToYour13Safely({
+        currentList: [{ trackId: '1', trackName: 'Song 1', artistName: 'Artist 1' }],
+        candidateTrack: { trackId: '2', trackName: 'Song 2', artistName: 'Artist 2' },
+        isLocked: true,
+      });
+      expect(res).toEqual({ ok: false, reason: 'locked' });
+    });
+
+    it('blocks addition when collection is full (13 tracks)', () => {
+      const fullList = Array.from({ length: 13 }, (_, i) => ({
+        trackId: String(i + 1),
+        trackName: `Song ${i + 1}`,
+        artistName: 'Artist',
+      }));
+      const res = appendTrackToYour13Safely({
+        currentList: fullList,
+        candidateTrack: { trackId: '99', trackName: 'New Song', artistName: 'Artist' },
+        isLocked: false,
+      });
+      expect(res).toEqual({ ok: false, reason: 'full' });
+    });
+
+    it('blocks addition when candidate track is a duplicate', () => {
+      const list = [{ trackId: '42', trackName: 'Blinding Lights', artistName: 'The Weeknd' }];
+      const res = appendTrackToYour13Safely({
+        currentList: list,
+        candidateTrack: { trackId: '42', trackName: 'Blinding Lights', artistName: 'The Weeknd' },
+        isLocked: false,
+      });
+      expect(res).toEqual({ ok: false, reason: 'duplicate' });
+    });
+
+    it('successfully appends new track to next available slot', () => {
+      const list = [
+        { trackId: '1', trackName: 'Song 1', artistName: 'Artist 1' },
+        { trackId: '2', trackName: 'Song 2', artistName: 'Artist 2' },
+      ];
+      const res = appendTrackToYour13Safely({
+        currentList: list,
+        candidateTrack: { trackId: '3', trackName: 'Song 3', artistName: 'Artist 3' },
+        isLocked: false,
+      });
+      expect(res.ok).toBe(true);
+      expect(res.slotNumber).toBe(3);
+      expect(res.nextList.length).toBe(3);
+      expect(res.track.trackName).toBe('Song 3');
+      expect(res.track.rank).toBe(3);
     });
   });
 });

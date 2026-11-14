@@ -9,6 +9,7 @@ import {
   Image,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -38,6 +39,8 @@ import {
 } from './utils/collectiveGrooveUtils';
 import { UserAvatar } from './utils/avatarUtils';
 import { createAudioPreviewController } from './audioPreviewController';
+import { useLock } from './LockContext';
+import { appendTrackToYour13Safely } from './utils/playlistUtils';
 
 const isUsableArtworkUrl = (url) =>
   typeof url === 'string' &&
@@ -56,8 +59,10 @@ function Pickerchoosers() {
   songsRef.current = songs;
   const [votedIds, setVotedIds] = useState({});
   const [failedArtIds, setFailedArtIds] = useState({});
+  const [activeMenuSong, setActiveMenuSong] = useState(null);
   const [loading, setLoading] = useState(true);
   const userId = auth.currentUser?.uid;
+  const { isLocked } = useLock();
   const actionLockRef = useRef(createAsyncActionLock());
 
   const loadSongs = useCallback(async () => {
@@ -175,6 +180,61 @@ function Pickerchoosers() {
       return;
     }
     await audioControllerRef.current.playQueue(queue, 0, { searchMusicFn: searchMusic });
+  };
+
+  const handleAddToYour13 = async (song) => {
+    if (!userId) {
+      toast.show({ kind: 'info', message: 'Please sign in to add tracks to Your13.' });
+      return;
+    }
+
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userDocRef);
+      const userData = userSnap.exists() ? userSnap.data() : {};
+      const currentList = userData.your13 || userData.songs || userData.playlist || [];
+
+      const result = appendTrackToYour13Safely({
+        currentList,
+        candidateTrack: normalizeTrack(song),
+        isLocked,
+      });
+
+      if (!result.ok) {
+        if (result.reason === 'locked') {
+          toast.show({ kind: 'info', message: 'Your13 is currently locked.' });
+        } else if (result.reason === 'full') {
+          toast.show({ kind: 'info', message: 'Your13 is full (13/13) — edit your slots in Your13.' });
+        } else if (result.reason === 'duplicate') {
+          toast.show({ kind: 'info', message: `"${song.trackName}" is already in your Your13.` });
+        }
+        return;
+      }
+
+      await updateDoc(userDocRef, { your13: result.nextList });
+      try {
+        const playlistDocRef = doc(db, 'playlists', userId);
+        await setDoc(playlistDocRef, { songs: result.nextList, your13: result.nextList }, { merge: true });
+      } catch (_) {}
+
+      toast.show({
+        kind: 'success',
+        message: `Added "${song.trackName}" to Your13 (Slot #${result.slotNumber})!`,
+      });
+      setActiveMenuSong(null);
+    } catch (err) {
+      console.error('Error adding track to Your13:', err);
+      toast.show({ kind: 'error', message: 'Could not add track to Your13.' });
+    }
+  };
+
+  const handleWriteMemoir = (song) => {
+    const normalized = normalizeTrack(song);
+    setActiveMenuSong(null);
+    navigation.navigate('Memoir', {
+      song: normalized,
+      preselectedTrack: normalized,
+    });
   };
 
   const quota = deriveUserDropQuota(songs, userId);
@@ -507,45 +567,57 @@ function Pickerchoosers() {
                     </View>
                   </TouchableOpacity>
 
-                  {hasVoted ? (
+                  <View style={styles.trackCardActionsRow}>
+                    {hasVoted ? (
+                      <TouchableOpacity
+                        style={[styles.voteButton, styles.voteButtonVoted]}
+                        disabled={true}
+                        activeOpacity={1}
+                        accessibilityLabel={`Co-signed (${song.score})`}
+                      >
+                        <Feather name="check" size={13} color="#0B0C10" />
+                        <Text style={styles.voteButtonVotedLabel}>
+                          ✓ Co-Signed ({Number(song.score) || 0})
+                        </Text>
+                      </TouchableOpacity>
+                    ) : quota.coSignsRemaining === 0 ? (
+                      <TouchableOpacity
+                        onPress={() =>
+                          toast.show({ kind: 'info', message: 'All 3 Co-Signs used for this drop.' })
+                        }
+                        style={[styles.voteButton, styles.voteButtonDisabled]}
+                        activeOpacity={0.8}
+                        accessibilityLabel="All 3 Co-Signs used"
+                      >
+                        <Feather name="arrow-up" size={13} color="#64748B" />
+                        <Text style={styles.voteButtonDisabledLabel}>
+                          ▲ Co-Sign ({Number(song.score) || 0})
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => addOrIncrementSong(song)}
+                        style={styles.voteButton}
+                        activeOpacity={0.8}
+                        accessibilityLabel={`Co-sign ${song.trackName}`}
+                      >
+                        <Feather name="arrow-up" size={13} color="#000000" />
+                        <Text style={styles.voteButtonLabel}>
+                          ▲ Co-Sign ({Number(song.score) || 0})
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Quick-Action Overflow Button (WP-04) */}
                     <TouchableOpacity
-                      style={[styles.voteButton, styles.voteButtonVoted]}
-                      disabled={true}
-                      activeOpacity={1}
-                      accessibilityLabel={`Co-signed (${song.score})`}
+                      style={styles.overflowBtn}
+                      onPress={() => setActiveMenuSong(song)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      accessibilityLabel={`Options for ${song.trackName}`}
                     >
-                      <Feather name="check" size={13} color="#0B0C10" />
-                      <Text style={styles.voteButtonVotedLabel}>
-                        ✓ Co-Signed ({Number(song.score) || 0})
-                      </Text>
+                      <Feather name="more-horizontal" size={18} color="#94A3B8" />
                     </TouchableOpacity>
-                  ) : quota.coSignsRemaining === 0 ? (
-                    <TouchableOpacity
-                      onPress={() =>
-                        toast.show({ kind: 'info', message: 'All 3 Co-Signs used for this drop.' })
-                      }
-                      style={[styles.voteButton, styles.voteButtonDisabled]}
-                      activeOpacity={0.8}
-                      accessibilityLabel="All 3 Co-Signs used"
-                    >
-                      <Feather name="arrow-up" size={13} color="#64748B" />
-                      <Text style={styles.voteButtonDisabledLabel}>
-                        ▲ Co-Sign ({Number(song.score) || 0})
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => addOrIncrementSong(song)}
-                      style={styles.voteButton}
-                      activeOpacity={0.8}
-                      accessibilityLabel={`Co-sign ${song.trackName}`}
-                    >
-                      <Feather name="arrow-up" size={13} color="#000000" />
-                      <Text style={styles.voteButtonLabel}>
-                        ▲ Co-Sign ({Number(song.score) || 0})
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                  </View>
                 </View>
               );
             })
@@ -574,6 +646,63 @@ function Pickerchoosers() {
           )}
         </ScrollView>
       )}
+
+      {/* 1-Tap Curation Bridge Action Sheet (WP-04) */}
+      <Modal
+        visible={Boolean(activeMenuSong)}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setActiveMenuSong(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setActiveMenuSong(null)}
+        >
+          <View style={styles.actionSheetCard}>
+            <View style={styles.actionSheetHeader}>
+              <Text style={styles.actionSheetTitle} numberOfLines={1}>
+                {activeMenuSong?.trackName || 'Track Options'}
+              </Text>
+              <Text style={styles.actionSheetSubtitle} numberOfLines={1}>
+                by {activeMenuSong?.artistName || 'Unknown Artist'}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.actionSheetItem}
+              onPress={() => handleAddToYour13(activeMenuSong)}
+              activeOpacity={0.8}
+            >
+              <Feather name="plus-circle" size={18} color="#FF8C00" />
+              <View style={styles.actionItemTextWrap}>
+                <Text style={styles.actionItemTitle}>+ Add to Your13</Text>
+                <Text style={styles.actionItemSub}>Save to your personal 13 signature tracks</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionSheetItem}
+              onPress={() => handleWriteMemoir(activeMenuSong)}
+              activeOpacity={0.8}
+            >
+              <Feather name="book-open" size={18} color="#D4F458" />
+              <View style={styles.actionItemTextWrap}>
+                <Text style={styles.actionItemTitle}>📖 Write Song Memoir</Text>
+                <Text style={styles.actionItemSub}>Capture a personal memory tied to this track</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionSheetCancelBtn}
+              onPress={() => setActiveMenuSong(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.actionSheetCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -930,6 +1059,97 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     gap: 4,
+  },
+  trackCardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  overflowBtn: {
+    minWidth: 38,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A1E29',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#262D3D',
+    paddingHorizontal: 8,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: 24,
+    paddingHorizontal: 16,
+  },
+  actionSheetCard: {
+    width: '100%',
+    maxWidth: 440,
+    backgroundColor: '#151821',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#242936',
+    padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+  },
+  actionSheetHeader: {
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#242936',
+    paddingBottom: 12,
+  },
+  actionSheetTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  actionSheetSubtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  actionSheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1B1E29',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#262E3E',
+    gap: 12,
+  },
+  actionItemTextWrap: {
+    flex: 1,
+  },
+  actionItemTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  actionItemSub: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  actionSheetCancelBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#202430',
+    marginTop: 4,
+  },
+  actionSheetCancelText: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    fontWeight: '700',
   },
   voteButtonVoted: {
     backgroundColor: '#D4F458',

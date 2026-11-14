@@ -132,3 +132,57 @@ export function computeLockStateForPlaylist(rawList, uid, requiredCount = REQUIR
   };
 }
 
+/**
+ * Safely appends a candidate track to a user's Your13 playlist [WP-04].
+ * Validates lock state, duplicates, and 13-track cap.
+ */
+export function appendTrackToYour13Safely({ currentList = [], candidateTrack = {}, isLocked = false }) {
+  if (isLocked) {
+    return { ok: false, reason: 'locked' };
+  }
+
+  const normalizedCurrent = normalizeYour13List(currentList);
+  if (normalizedCurrent.length >= REQUIRED_YOUR13_COUNT) {
+    return { ok: false, reason: 'full' };
+  }
+
+  if (!candidateTrack || typeof candidateTrack !== 'object') {
+    return { ok: false, reason: 'invalid_track' };
+  }
+
+  const candTitle = String(candidateTrack.trackName || candidateTrack.title || '').trim().toLowerCase();
+  const candArtist = String(candidateTrack.artistName || candidateTrack.artist || '').trim().toLowerCase();
+  const candId = candidateTrack.trackId != null ? String(candidateTrack.trackId).trim() : candidateTrack.id ? String(candidateTrack.id).trim() : null;
+
+  const alreadyExists = normalizedCurrent.some((existing) => {
+    const exId = String(existing.trackId || existing.id || '').trim();
+    if (candId && exId && exId === candId) return true;
+    const exTitle = String(existing.trackName || existing.title || '').trim().toLowerCase();
+    const exArtist = String(existing.artistName || existing.artist || '').trim().toLowerCase();
+    return exTitle && exArtist && candTitle && candArtist && exTitle === candTitle && exArtist === candArtist;
+  });
+
+  if (alreadyExists) {
+    return { ok: false, reason: 'duplicate' };
+  }
+
+  const newTrack = {
+    ...candidateTrack,
+    trackId: candId || `track_${Date.now()}`,
+    trackName: String(candidateTrack.trackName || candidateTrack.title || 'Unknown Track').trim(),
+    artistName: String(candidateTrack.artistName || candidateTrack.artist || 'Unknown Artist').trim(),
+    artworkUrl100: candidateTrack.artworkUrl100 || candidateTrack.imageUrl || '',
+    previewUrl: candidateTrack.previewUrl || '',
+    primaryGenreName: candidateTrack.primaryGenreName || candidateTrack.genre || 'Music',
+    rank: normalizedCurrent.length + 1,
+  };
+
+  const nextList = [...normalizedCurrent, newTrack];
+  return {
+    ok: true,
+    nextList,
+    slotNumber: nextList.length,
+    track: newTrack,
+  };
+}
+
