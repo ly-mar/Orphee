@@ -26,7 +26,6 @@ import { db, auth } from './firebaseConfig';
 import moment from 'moment';
 import { sendFriendRequest } from './HandlingFriends';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
-import FadingCarousel from './FadingCarousel';
 import UserModerationModal from './UserModerationModal';
 import { openOrCreateDirectChat } from './utils/chatMessageUtils';
 import { normalizeYour13List } from './utils/playlistUtils';
@@ -34,6 +33,12 @@ import { normalizeAndSortMediaList, UserAvatar } from './utils/avatarUtils';
 import { createAudioPreviewController } from './audioPreviewController';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import {
+  getCachedUserProfile,
+  setCachedUserProfile,
+  getCachedUserPlaylist,
+  setCachedUserPlaylist,
+} from './utils/sessionCache';
 
 const windowWidth = Dimensions.get('window').width;
 
@@ -44,8 +49,29 @@ const getHighResImage = (imageUrl) => {
 
 const UserProfileScreen = ({ route, navigation }) => {
   const { userId, username: routeUsername } = route?.params || {};
-  const [username, setUsername] = useState(routeUsername || '');
-  const [selectedSongs, setSelectedSongs] = useState([]);
+  const cachedUser = userId ? getCachedUserProfile(userId) : null;
+  const cachedPlaylist = userId ? getCachedUserPlaylist(userId) : null;
+  const initialUsername =
+    routeUsername ||
+    route?.params?.displayName ||
+    cachedUser?.username ||
+    cachedUser?.displayName ||
+    '';
+  const initialAvatar =
+    route?.params?.profileImageUrl ||
+    route?.params?.profilePicture ||
+    cachedUser?.profileImageUrl ||
+    null;
+  const initialSongs = cachedPlaylist?.songs
+    ? normalizeYour13List(
+        Array.isArray(cachedPlaylist.songs)
+          ? cachedPlaylist.songs
+          : Object.values(cachedPlaylist.songs)
+      )
+    : [];
+
+  const [username, setUsername] = useState(initialUsername);
+  const [selectedSongs, setSelectedSongs] = useState(initialSongs);
   const [musicOfTheDay, setMusicOfTheDay] = useState(null);
   const [currentDate] = useState(moment().format('YYYY-MM-DD'));
   const [friendStatus, setFriendStatus] = useState('none');
@@ -53,12 +79,12 @@ const UserProfileScreen = ({ route, navigation }) => {
   const [moderationVisible, setModerationVisible] = useState(false);
   const currentUserId = auth.currentUser?.uid;
   const [mediaList, setMediaList] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedUser);
   const [pastMemoirs, setPastMemoirs] = useState([]);
   const [following, setFollowing] = useState(0);
   const [followers, setFollowers] = useState(0);
-  const [selectedTab, setSelectedTab] = useState('13');
-  const [userProfileImage, setUserProfileImage] = useState(null);
+  const [selectedTab, setSelectedTab] = useState('your13');
+  const [userProfileImage, setUserProfileImage] = useState(initialAvatar);
   const [playingTrackId, setPlayingTrackId] = useState(null);
   const audioControllerRef = useRef(null);
 
@@ -132,6 +158,7 @@ const UserProfileScreen = ({ route, navigation }) => {
         if (userData.profileImageUrl) {
           setUserProfileImage(userData.profileImageUrl);
         }
+        setCachedUserProfile(userId, userData);
       } else {
         resolvedUsername = resolvedUsername || 'Listener';
         setUsername(resolvedUsername);
@@ -143,6 +170,7 @@ const UserProfileScreen = ({ route, navigation }) => {
       if (uidPlaylistDoc.exists() && uidPlaylistDoc.data()?.songs) {
         const raw = uidPlaylistDoc.data().songs;
         loadedSongs = Array.isArray(raw) ? raw : Object.values(raw);
+        setCachedUserPlaylist(userId, uidPlaylistDoc.data());
       } else if (resolvedUsername && resolvedUsername !== userId) {
         const namePlaylistDoc = await getDoc(doc(db, 'playlists', resolvedUsername));
         if (namePlaylistDoc.exists() && namePlaylistDoc.data()?.songs) {
@@ -350,22 +378,13 @@ const UserProfileScreen = ({ route, navigation }) => {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollViewContent}>
         <View style={styles.profileHeaderContainer}>
           <View style={styles.profileImageContainer}>
-            {loading ? (
-              <ActivityIndicator size="large" color="#FF8C00" />
-            ) : mediaList.length > 0 ? (
-              <FadingCarousel
-                images={mediaList.map((item) => item.resolvedUrl).filter(Boolean)}
-                duration={3000}
-              />
-            ) : (
-              <UserAvatar
-                imageUrl={userProfileImage}
-                name={username || 'Listener'}
-                size={104}
-                style={styles.profileImage}
-                borderRadius={52}
-              />
-            )}
+            <UserAvatar
+              imageUrl={userProfileImage}
+              name={username || 'Listener'}
+              size={104}
+              style={styles.profileImage}
+              borderRadius={52}
+            />
           </View>
 
           <View style={styles.usernameWithMailIcon}>
@@ -414,8 +433,8 @@ const UserProfileScreen = ({ route, navigation }) => {
         {/* Tabs Section */}
         <View style={styles.tabContainer}>
           {[
-            { id: '13', label: `Your13 (${selectedSongs.length})` },
-            { id: 'Memoir', label: 'Song Memoirs' },
+            { id: 'your13', label: `Your13 (${selectedSongs.length})` },
+            { id: 'memoirs', label: `Song Memoirs (${pastMemoirs.length})` },
           ].map((tab) => (
             <TouchableOpacity
               key={tab.id}
@@ -429,7 +448,7 @@ const UserProfileScreen = ({ route, navigation }) => {
           ))}
         </View>
 
-        {selectedTab === '13' && (
+        {selectedTab === 'your13' && (
           <View style={styles.playlistContainer}>
             {selectedSongs.length > 0 ? (
               selectedSongs.map((song, idx) => {
@@ -488,7 +507,7 @@ const UserProfileScreen = ({ route, navigation }) => {
           </View>
         )}
 
-        {selectedTab === 'Memoir' && (
+        {selectedTab === 'memoirs' && (
           <View style={styles.memoirContainer}>
             {pastMemoirs.length > 0 ? (
               pastMemoirs.map((memoir, index) => {

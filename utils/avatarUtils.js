@@ -64,7 +64,14 @@ export function UserAvatar({
   style,
   borderRadius = size / 2,
 }) {
+  const [imageError, setImageError] = React.useState(false);
+
+  React.useEffect(() => {
+    setImageError(false);
+  }, [imageUrl]);
+
   const isCustomImage =
+    !imageError &&
     typeof imageUrl === 'string' &&
     (imageUrl.startsWith('http://') ||
       imageUrl.startsWith('https://') ||
@@ -75,6 +82,7 @@ export function UserAvatar({
     return (
       <Image
         source={{ uri: imageUrl }}
+        onError={() => setImageError(true)}
         style={[
           {
             width: size,

@@ -156,7 +156,13 @@ const UserSearchScreen = () => {
           if (item.id === auth.currentUser?.uid || (currentUsername && item.username === currentUsername)) {
             navigation.navigate('ProfileScreen');
           } else {
-            navigation.navigate('UserProfile', { userId: item.id });
+            navigation.navigate('UserProfile', {
+              userId: item.id,
+              username: item.username || item.displayName,
+              displayName: item.displayName || item.username,
+              profileImageUrl: item.profileImageUrl || item.profilePicture,
+              initialUser: item,
+            });
           }
         }}
       >
