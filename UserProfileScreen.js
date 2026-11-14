@@ -118,8 +118,8 @@ const UserProfileScreen = ({ route, navigation }) => {
   }, [navigation, stopAudio]);
 
   const handleTogglePreview = async (track) => {
-    const previewUrl = track?.previewUrl || track?.audioUrl;
-    const trackKey = track?.trackId || track?.id || track?.trackName || track?.title;
+    const previewUrl = track?.previewUrl || track?.audioUrl || track?.item?.previewUrl;
+    const trackKey = track?.trackId || track?.id || track?.trackName || track?.title || track?.item?.trackId;
 
     if (!previewUrl) {
       Alert.alert('Preview Unavailable', 'No 30-second audio preview is available for this track.');
@@ -456,6 +456,18 @@ const UserProfileScreen = ({ route, navigation }) => {
                 const isPlaying = playingTrackId === trackKey;
                 const artworkUri = getHighResImage(song.artworkUrl100 || song.imageUrl);
                 const rankNum = idx + 1;
+
+                const matchingMemoir = pastMemoirs.find((m) => {
+                  const mId = String(m.trackId || m.item?.trackId || m.item?.id || m.id || '').trim();
+                  const sId = String(song.trackId || song.id || '').trim();
+                  if (mId && sId && mId === sId) return true;
+                  const mTitle = String(m.trackName || m.title || m.item?.trackName || '').trim().toLowerCase();
+                  const sTitle = String(song.trackName || song.title || '').trim().toLowerCase();
+                  const mArtist = String(m.artistName || m.artist || m.item?.artistName || '').trim().toLowerCase();
+                  const sArtist = String(song.artistName || song.artist || '').trim().toLowerCase();
+                  return mTitle && sTitle && mTitle === sTitle && mArtist === sArtist;
+                });
+
                 return (
                   <TouchableOpacity
                     key={`${trackKey}-${idx}`}
@@ -482,6 +494,13 @@ const UserProfileScreen = ({ route, navigation }) => {
                       <Text style={styles.trackArtistText} numberOfLines={1}>
                         {song.artistName || song.artist || 'Unknown Artist'}
                       </Text>
+                      {matchingMemoir && (
+                        <View style={styles.trackMemoirBadge}>
+                          <Text style={styles.trackMemoirBadgeText} numberOfLines={1}>
+                            📖 {matchingMemoir.standoutLine ? `"${matchingMemoir.standoutLine}"` : (matchingMemoir.contextTag || 'Memoir attached')}
+                          </Text>
+                        </View>
+                      )}
                     </View>
 
                     <TouchableOpacity
@@ -511,27 +530,70 @@ const UserProfileScreen = ({ route, navigation }) => {
           <View style={styles.memoirContainer}>
             {pastMemoirs.length > 0 ? (
               pastMemoirs.map((memoir, index) => {
-                const memoirCoverUri = getHighResImage(memoir.item?.artworkUrl100 || memoir.item?.imageUrl);
+                const memoirCoverUri = getHighResImage(
+                  memoir.item?.artworkUrl100 || memoir.item?.imageUrl || memoir.artworkUrl100 || memoir.imageUrl
+                );
+                const trackItem = memoir.item || memoir;
+                const trackName = trackItem.trackName || trackItem.title || 'Untitled Track';
+                const artistName = trackItem.artistName || trackItem.artist || 'Unknown Artist';
+                const trackKey = trackItem.trackId || trackItem.id || trackName;
+                const isPlaying = playingTrackId === trackKey;
+
                 return (
-                  <View key={index} style={styles.memoirItemContainer}>
-                    <View style={styles.coverAndTrackInfoContainer}>
-                      {memoirCoverUri ? (
-                        <Image
-                          source={{ uri: memoirCoverUri }}
-                          style={styles.coverImage}
-                        />
-                      ) : (
-                        <View style={[styles.coverImage, styles.artworkFallback]}>
-                          <FontAwesome5 name="music" size={22} color="#64748B" />
+                  <View key={memoir.id || index} style={styles.memoirCardContainer}>
+                    <View style={styles.memoirCardHeaderRow}>
+                      <View style={styles.memoirCoverAndTrackRow}>
+                        {memoirCoverUri ? (
+                          <Image source={{ uri: memoirCoverUri }} style={styles.memoirCoverImage} />
+                        ) : (
+                          <View style={[styles.memoirCoverImage, styles.artworkFallback]}>
+                            <FontAwesome5 name="music" size={18} color="#64748B" />
+                          </View>
+                        )}
+                        <View style={styles.memoirTrackTextGroup}>
+                          <Text style={styles.memoirTrackTitle} numberOfLines={1}>
+                            {trackName}
+                          </Text>
+                          <Text style={styles.memoirTrackArtist} numberOfLines={1}>
+                            {artistName}
+                          </Text>
                         </View>
+                      </View>
+
+                      {Boolean(trackItem.previewUrl || memoir.previewUrl) && (
+                        <TouchableOpacity
+                          style={[styles.memoirPlayBtn, isPlaying && styles.memoirPlayBtnActive]}
+                          onPress={() => handleTogglePreview(trackItem.previewUrl ? trackItem : memoir)}
+                          accessibilityLabel={isPlaying ? 'Stop preview' : 'Play 30s preview'}
+                        >
+                          <FontAwesome5
+                            name={isPlaying ? 'stop' : 'play'}
+                            size={11}
+                            color={isPlaying ? '#0B0C10' : '#D4F458'}
+                          />
+                        </TouchableOpacity>
                       )}
-                      <Text style={styles.trackTitle}>
-                        {memoir.item?.trackName} - {memoir.item?.artistName}
-                      </Text>
                     </View>
-                    <View style={styles.commentDisplayContainer}>
-                      <Text style={styles.commentDisplayText}>{memoir.comment}</Text>
+
+                    {/* Structured Listening Context & Standout Line */}
+                    <View style={styles.memoirMetaRow}>
+                      <View style={styles.memoirContextPill}>
+                        <Text style={styles.memoirContextPillText}>
+                          {memoir.contextTag || 'Late Night'}
+                        </Text>
+                      </View>
+                      {Boolean(memoir.standoutLine) && (
+                        <Text style={styles.memoirStandoutLine} numberOfLines={1}>
+                          "{memoir.standoutLine}"
+                        </Text>
+                      )}
                     </View>
+
+                    {Boolean(memoir.comment) && (
+                      <View style={styles.memoirCommentBox}>
+                        <Text style={styles.memoirCommentText}>"{memoir.comment}"</Text>
+                      </View>
+                    )}
                   </View>
                 );
               })
@@ -817,6 +879,112 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
     marginTop: 6,
+  },
+  trackMemoirBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(212, 244, 88, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 244, 88, 0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 4,
+  },
+  trackMemoirBadgeText: {
+    color: '#D4F458',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  memoirCardContainer: {
+    marginBottom: 14,
+    backgroundColor: '#161922',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#242936',
+  },
+  memoirCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  memoirCoverAndTrackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  memoirCoverImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: '#1E2430',
+  },
+  memoirTrackTextGroup: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  memoirTrackTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  memoirTrackArtist: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  memoirPlayBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1E2430',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D4F458',
+  },
+  memoirPlayBtnActive: {
+    backgroundColor: '#D4F458',
+  },
+  memoirMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  memoirContextPill: {
+    backgroundColor: '#1E2430',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D4F458',
+  },
+  memoirContextPillText: {
+    color: '#D4F458',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  memoirStandoutLine: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontStyle: 'italic',
+    flex: 1,
+  },
+  memoirCommentBox: {
+    backgroundColor: '#0F1117',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
+  },
+  memoirCommentText: {
+    fontSize: 13,
+    color: '#CBD5E1',
+    lineHeight: 19,
   },
   commentDisplayContainer: {
     flex: 1,

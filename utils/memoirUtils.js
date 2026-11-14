@@ -1,4 +1,17 @@
-// utils/memoirUtils.js — Dual-source memoir reader & deduplication [BUG-007]
+// utils/memoirUtils.js — Dual-source memoir reader & deduplication [BUG-007, WS-03]
+
+export const LISTENING_CONTEXT_TAGS = [
+  'Late Night',
+  'On Repeat',
+  'Core Memory',
+  'Headphones Only',
+  'Vinyl Crate',
+];
+
+export function sanitizeStandoutLine(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw.trim().slice(0, 80);
+}
 
 export async function loadUserMemoirHistory({ uid, fetchUserDoc, fetchRootCollection }) {
   if (!uid) return [];

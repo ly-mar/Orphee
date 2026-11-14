@@ -1,5 +1,5 @@
 // MemoirHistoryScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,11 @@ import {
 } from 'react-native';
 import { IconButton, Button, Modal, Portal } from 'react-native-paper';
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { FontAwesome5 } from '@expo/vector-icons';
+import { FontAwesome5, Feather } from '@expo/vector-icons';
 import { auth, db } from './firebaseConfig';
 import { normalizeTrack } from './services/musicApi';
 import { loadUserMemoirHistory } from './utils/memoirUtils';
+import { createAudioPreviewController } from './audioPreviewController';
 
 export { loadUserMemoirHistory };
 
@@ -44,6 +45,50 @@ const MemoirHistoryScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(initialMemoirs.length === 0);
   const [memoirToDelete, setMemoirToDelete] = useState(null);
   const [visible, setVisible] = useState(false);
+  const [playingTrackId, setPlayingTrackId] = useState(null);
+
+  const audioControllerRef = useRef(null);
+  if (!audioControllerRef.current) {
+    audioControllerRef.current = createAudioPreviewController({
+      onStatusChange: (status) => {
+        if (status?.didJustFinish) {
+          setPlayingTrackId(null);
+        }
+      },
+      onError: () => {
+        setPlayingTrackId(null);
+      },
+    });
+  }
+
+  useEffect(() => {
+    const unsub = navigation?.addListener?.('blur', () => {
+      audioControllerRef.current?.stop?.();
+      setPlayingTrackId(null);
+    });
+    return () => {
+      unsub?.();
+      audioControllerRef.current?.dispose?.();
+    };
+  }, [navigation]);
+
+  const togglePreview = async (track) => {
+    const trackKey = track.trackId || track.id || track.trackName;
+    const previewUrl = track.previewUrl || track.item?.previewUrl;
+    if (!previewUrl) return;
+
+    if (playingTrackId === trackKey) {
+      await audioControllerRef.current?.stop?.();
+      setPlayingTrackId(null);
+      return;
+    }
+
+    setPlayingTrackId(trackKey);
+    const started = await audioControllerRef.current.play(previewUrl);
+    if (!started) {
+      setPlayingTrackId(null);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -132,32 +177,71 @@ const MemoirHistoryScreen = ({ route, navigation }) => {
         <ScrollView contentContainerStyle={styles.container}>
           {pastMemoirs.length > 0 ? (
             pastMemoirs.map((memoir, index) => {
-              const track = normalizeTrack(memoir.item || {});
+              const track = normalizeTrack(memoir.item || memoir);
+              const trackKey = track.trackId || track.id || track.trackName;
+              const isPlaying = playingTrackId === trackKey;
               return (
                 <View key={memoir.id || index} style={styles.memoirItemContainer}>
-                  <TouchableOpacity
-                    style={styles.coverAndTrackInfoContainer}
-                    onPress={() => navigation?.navigate('SongDetails', { song: track })}
-                  >
-                    <Image
-                      source={{ uri: getHighResImage(track.artworkUrl100) }}
-                      style={styles.coverImage}
-                    />
-                    <Text style={styles.trackTitle} numberOfLines={2}>
-                      {track.trackName} — {track.artistName}
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.cardHeaderRow}>
+                    <TouchableOpacity
+                      style={styles.coverAndTrackInfoContainer}
+                      onPress={() => navigation?.navigate('SongDetails', { song: track })}
+                    >
+                      <Image
+                        source={{ uri: getHighResImage(track.artworkUrl100 || track.imageUrl) }}
+                        style={styles.coverImage}
+                      />
+                      <View style={styles.headerTextGroup}>
+                        <Text style={styles.trackTitle} numberOfLines={1}>
+                          {track.trackName}
+                        </Text>
+                        <Text style={styles.trackArtist} numberOfLines={1}>
+                          {track.artistName}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <View style={styles.cardActionGroup}>
+                      {Boolean(track.previewUrl) && (
+                        <TouchableOpacity
+                          style={[styles.playPreviewBtn, isPlaying && styles.playPreviewBtnActive]}
+                          onPress={() => togglePreview(track)}
+                          accessibilityLabel={isPlaying ? 'Stop preview' : 'Play 30s preview'}
+                        >
+                          <FontAwesome5
+                            name={isPlaying ? 'stop' : 'play'}
+                            size={11}
+                            color={isPlaying ? '#0B0C10' : '#D4F458'}
+                          />
+                        </TouchableOpacity>
+                      )}
+                      <IconButton
+                        icon="delete-outline"
+                        iconColor="#FC8181"
+                        size={20}
+                        onPress={() => showDeleteConfirmation(memoir)}
+                        style={{ margin: 0 }}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Context Pill & Standout Line */}
+                  <View style={styles.metaRow}>
+                    <View style={styles.contextPill}>
+                      <Text style={styles.contextPillText}>
+                        {memoir.contextTag || 'Late Night'}
+                      </Text>
+                    </View>
+                    {Boolean(memoir.standoutLine) && (
+                      <Text style={styles.standoutLineText} numberOfLines={1}>
+                        "{memoir.standoutLine}"
+                      </Text>
+                    )}
+                  </View>
 
                   <View style={styles.commentDisplayContainer}>
                     <Text style={styles.commentDisplayText}>"{memoir.comment}"</Text>
                   </View>
-
-                  <IconButton
-                    icon="delete-outline"
-                    iconColor="#FC8181"
-                    size={22}
-                    onPress={() => showDeleteConfirmation(memoir)}
-                  />
                 </View>
               );
             })
@@ -232,41 +316,100 @@ const styles = StyleSheet.create({
     paddingBottom: 90,
   },
   memoirItemContainer: {
-    flexDirection: 'row',
     marginBottom: 14,
     backgroundColor: '#161922',
     padding: 14,
-    borderRadius: 12,
-    alignItems: 'center',
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#242936',
   },
-  coverAndTrackInfoContainer: {
-    width: 110,
+  cardHeaderRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  coverAndTrackInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
   },
   coverImage: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: '#1E2430',
+  },
+  headerTextGroup: {
+    marginLeft: 12,
+    flex: 1,
   },
   trackTitle: {
     color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  trackArtist: {
+    color: '#94A3B8',
     fontSize: 12,
-    fontWeight: '600',
-    marginTop: 6,
-    textAlign: 'center',
+    marginTop: 2,
+  },
+  cardActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  playPreviewBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#1E2430',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D4F458',
+  },
+  playPreviewBtnActive: {
+    backgroundColor: '#D4F458',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  contextPill: {
+    backgroundColor: '#1E2430',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D4F458',
+  },
+  contextPillText: {
+    color: '#D4F458',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  standoutLineText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontStyle: 'italic',
+    flex: 1,
   },
   commentDisplayContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
+    backgroundColor: '#0F1117',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
   },
   commentDisplayText: {
-    fontSize: 15,
-    fontStyle: 'italic',
-    color: '#E2E8F0',
-    lineHeight: 20,
+    fontSize: 13,
+    color: '#CBD5E1',
+    lineHeight: 19,
   },
   noMemoirsText: {
     textAlign: 'center',

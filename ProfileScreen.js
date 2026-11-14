@@ -220,8 +220,8 @@ function ProfileScreen({ navigation }) {
   }, [navigation, stopAudio]);
 
   const handleTogglePreview = async (track) => {
-    const previewUrl = track?.previewUrl || track?.audioUrl;
-    const trackKey = track?.trackId || track?.id || track?.trackName || track?.title;
+    const previewUrl = track?.previewUrl || track?.audioUrl || track?.item?.previewUrl;
+    const trackKey = track?.trackId || track?.id || track?.trackName || track?.title || track?.item?.trackId;
 
     if (!previewUrl) {
       Alert.alert('Preview Unavailable', 'No 30-second audio preview is available for this track.');
@@ -1205,6 +1205,17 @@ function ProfileScreen({ navigation }) {
                 const rankLabel = `#${song.slotRank || idx + 1}`;
                 const normalizedGenre = normalizeGenreTag(song.primaryGenreName || song.genre);
 
+                const matchingMemoir = memoirs.find((m) => {
+                  const mId = String(m.trackId || m.item?.trackId || m.item?.id || m.id || '').trim();
+                  const sId = String(song.trackId || song.id || '').trim();
+                  if (mId && sId && mId === sId) return true;
+                  const mTitle = String(m.trackName || m.title || m.item?.trackName || '').trim().toLowerCase();
+                  const sTitle = String(song.trackName || song.title || '').trim().toLowerCase();
+                  const mArtist = String(m.artistName || m.artist || m.item?.artistName || '').trim().toLowerCase();
+                  const sArtist = String(song.artistName || song.artist || '').trim().toLowerCase();
+                  return mTitle && sTitle && mTitle === sTitle && mArtist === sArtist;
+                });
+
                 return (
                   <TouchableOpacity
                     key={`${trackKey}-${idx}`}
@@ -1231,6 +1242,13 @@ function ProfileScreen({ navigation }) {
                         {rankLabel} • By {song.artistName || song.artist || 'Unknown Artist'}
                         {normalizedGenre ? ` • ${normalizedGenre}` : ''}
                       </Text>
+                      {matchingMemoir && (
+                        <View style={styles.trackMemoirBadge}>
+                          <Text style={styles.trackMemoirBadgeText} numberOfLines={1}>
+                            📖 {matchingMemoir.standoutLine ? `"${matchingMemoir.standoutLine}"` : (matchingMemoir.contextTag || 'Memoir attached')}
+                          </Text>
+                        </View>
+                      )}
                     </View>
 
                     <TouchableOpacity
@@ -1337,18 +1355,74 @@ function ProfileScreen({ navigation }) {
                           </Text>
                         </View>
 
-                        <TouchableOpacity
-                          style={styles.memoirDeleteIconBtn}
-                          onPress={() => handleDeleteMemoir(item.id)}
-                          disabled={deletingMemoirId === item.id}
-                          accessibilityLabel="Delete memoir"
-                        >
-                          {deletingMemoirId === item.id ? (
-                            <ActivityIndicator size="small" color="#EF4444" />
-                          ) : (
-                            <Feather name="trash-2" size={14} color="#94A3B8" />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          {Boolean(item.previewUrl || item.item?.previewUrl) && (
+                            <TouchableOpacity
+                              style={[
+                                styles.memoirPlayBtn,
+                                playingTrackId ===
+                                  (item.trackId || item.id || item.title || item.item?.trackId) &&
+                                  styles.memoirPlayBtnActive,
+                              ]}
+                              onPress={(e) => {
+                                e?.stopPropagation?.();
+                                handleTogglePreview(item);
+                              }}
+                              accessibilityLabel={
+                                playingTrackId ===
+                                (item.trackId || item.id || item.title || item.item?.trackId)
+                                  ? 'Stop 30s preview'
+                                  : 'Play 30s preview'
+                              }
+                            >
+                              <FontAwesome5
+                                name={
+                                  playingTrackId ===
+                                  (item.trackId || item.id || item.title || item.item?.trackId)
+                                    ? 'stop'
+                                    : 'play'
+                                }
+                                size={10}
+                                color={
+                                  playingTrackId ===
+                                  (item.trackId || item.id || item.title || item.item?.trackId)
+                                    ? '#0B0C10'
+                                    : '#D4F458'
+                                }
+                              />
+                            </TouchableOpacity>
                           )}
-                        </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.memoirDeleteIconBtn}
+                            onPress={(e) => {
+                              e?.stopPropagation?.();
+                              handleDeleteMemoir(item.id);
+                            }}
+                            disabled={deletingMemoirId === item.id}
+                            accessibilityLabel="Delete memoir"
+                          >
+                            {deletingMemoirId === item.id ? (
+                              <ActivityIndicator size="small" color="#EF4444" />
+                            ) : (
+                              <Feather name="trash-2" size={14} color="#94A3B8" />
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      {/* Context Pill & Standout Line */}
+                      <View style={styles.memoirMetaRow}>
+                        <View style={styles.memoirContextPill}>
+                          <Text style={styles.memoirContextPillText}>
+                            {item.contextTag || 'Late Night'}
+                          </Text>
+                        </View>
+                        {Boolean(item.standoutLine) && (
+                          <Text style={styles.memoirStandoutLine} numberOfLines={1}>
+                            "{item.standoutLine}"
+                          </Text>
+                        )}
                       </View>
 
                       <Text style={styles.memoirCommentText} numberOfLines={3}>
@@ -2055,6 +2129,60 @@ const styles = StyleSheet.create({
   },
   memoirDeleteIconBtn: {
     padding: 4,
+  },
+  memoirPlayBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1E2430',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D4F458',
+  },
+  memoirPlayBtnActive: {
+    backgroundColor: '#D4F458',
+  },
+  memoirMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 6,
+  },
+  memoirContextPill: {
+    backgroundColor: '#1E2430',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D4F458',
+  },
+  memoirContextPillText: {
+    color: '#D4F458',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  memoirStandoutLine: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontStyle: 'italic',
+    flex: 1,
+  },
+  trackMemoirBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(212, 244, 88, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 244, 88, 0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 4,
+  },
+  trackMemoirBadgeText: {
+    color: '#D4F458',
+    fontSize: 10,
+    fontWeight: '700',
   },
   memoirCommentText: {
     color: '#E2E8F0',
