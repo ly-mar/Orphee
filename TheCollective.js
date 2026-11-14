@@ -23,6 +23,7 @@ import {
 import Taskbar from './Taskbar';
 import { createAsyncActionLock } from './utils/actionLockUtils';
 import { getCachedThemes, setCachedThemes } from './utils/sessionCache';
+import { preloadCoreThemeAssets } from './utils/imagePreloadUtils';
 
 const PAGE_SIZE = 20;
 
@@ -59,7 +60,7 @@ function TheCollective() {
   const themesRef = useRef(themes);
   themesRef.current = themes;
   const [lastVisibleDoc, setLastVisibleDoc] = useState(null);
-  const [loadingInitial, setLoadingInitial] = useState(!cachedThemes || cachedThemes.length === 0);
+  const [loadingInitial, setLoadingInitial] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const navigation = useNavigation();
@@ -79,13 +80,19 @@ function TheCollective() {
         const list = snap.docs.map((d) => ({
           id: d.id,
           name: d.data().name || d.id,
+          imageUrl: d.data().imageUrl || null,
         }));
         setThemes(list);
         setCachedThemes(list);
         setLastVisibleDoc(snap.docs[snap.docs.length - 1]);
         setHasMore(snap.docs.length === PAGE_SIZE);
+
+        const customUrls = list.map((item) => item.imageUrl).filter(Boolean);
+        if (customUrls.length > 0) {
+          preloadCoreThemeAssets(customUrls);
+        }
       } else {
-        setThemes(FALLBACK_THEMES);
+        setCachedThemes(FALLBACK_THEMES);
         setHasMore(false);
       }
     } catch (error) {
@@ -145,9 +152,12 @@ function TheCollective() {
       <View style={styles.cardContent}>
         <View style={styles.imageContainer}>
           <Image
-            source={themeImages[item.id] || themeImages.child_of_the_80s}
+            source={
+              themeImages[item.id] ||
+              (item.imageUrl ? { uri: item.imageUrl } : themeImages.child_of_the_80s)
+            }
             style={styles.cardImage}
-            fadeDuration={150}
+            fadeDuration={100}
             resizeMethod="resize"
           />
           <View style={styles.imageOverlay} />
@@ -160,7 +170,7 @@ function TheCollective() {
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.headerText}>The Collective Groove</Text>
-      {loadingInitial ? (
+      {loadingInitial && themes.length === 0 ? (
         <ActivityIndicator size="large" color="#FF8C00" style={{ marginTop: 40 }} />
       ) : (
         <FlatList
