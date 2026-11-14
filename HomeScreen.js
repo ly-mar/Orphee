@@ -10,8 +10,8 @@ import {
 } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { Feather } from '@expo/vector-icons';
+import { doc, onSnapshot, getDoc } from 'firebase/firestore';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { auth, db } from './firebaseConfig';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
 import {
@@ -25,16 +25,20 @@ import {
   setCachedUserProfile,
   getCachedUserPlaylist,
   setCachedUserPlaylist,
+  getCachedRankedUsers,
+  setCachedRankedUsers,
 } from './utils/sessionCache';
 
 function HomeScreen({ navigation }) {
   const currentUid = auth.currentUser?.uid;
   const cachedProfile = currentUid ? getCachedUserProfile(currentUid) : null;
   const cachedPlaylist = currentUid ? getCachedUserPlaylist(currentUid) : null;
+  const initialRankedUsers = (currentUid ? getCachedRankedUsers(currentUid) : null) || [];
 
   const [currentUser, setCurrentUser] = useState(auth.currentUser || null);
   const [userProfileDoc, setUserProfileDoc] = useState(cachedProfile);
   const [userPlaylistDoc, setUserPlaylistDoc] = useState(cachedPlaylist);
+  const [cachedRankedUsers, setCachedRankedUsersState] = useState(initialRankedUsers);
   const [safetyHydrate, setSafetyHydrate] = useState(Boolean(cachedProfile));
 
   useEffect(() => {
@@ -43,6 +47,33 @@ function HomeScreen({ navigation }) {
     }, 1000);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const uid = currentUser?.uid;
+    if (!uid) {
+      setCachedRankedUsersState([]);
+      return;
+    }
+    const cached = getCachedRankedUsers(uid);
+    if (cached && cached.length > 0) {
+      setCachedRankedUsersState(cached);
+      return;
+    }
+    let isMounted = true;
+    getDoc(doc(db, 'ranking', uid))
+      .then((snap) => {
+        if (!isMounted) return;
+        if (snap.exists() && Array.isArray(snap.data()?.rankings)) {
+          const list = snap.data().rankings;
+          setCachedRankedUsers(uid, list);
+          setCachedRankedUsersState(list);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.uid]);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -105,7 +136,11 @@ function HomeScreen({ navigation }) {
 
   const effectiveProfileDoc = userProfileDoc ?? (safetyHydrate ? {} : null);
   const dashboardState = deriveHomeDashboardState(currentUser, effectiveProfileDoc, userPlaylistDoc);
-  const vibePreviewText = deriveVibeMatchPreview(effectiveProfileDoc?.rankedUsers || []);
+  const activeRankedUsers =
+    cachedRankedUsers.length > 0
+      ? cachedRankedUsers
+      : effectiveProfileDoc?.rankedUsers || [];
+  const vibePreviewText = deriveVibeMatchPreview(activeRankedUsers);
 
   return (
     <ImageBackground source={backgroundImage} style={styles.backgroundImage}>
@@ -195,7 +230,14 @@ function HomeScreen({ navigation }) {
                       buttonColor="#FF8C00"
                       textColor="#000000"
                       labelStyle={styles.actionBtnLabel}
-                      onPress={() => navigation.navigate('RankedUsers', { rankedUsers: [] })}
+                      onPress={() =>
+                        navigation.navigate('RankedUsers', {
+                          rankedUsers: activeRankedUsers,
+                          selectedSongs: dashboardState.your13,
+                          userId: currentUser?.uid,
+                          fromScreen: 'Home',
+                        })
+                      }
                       icon="lightning-bolt"
                     >
                       Run Vibe Check
@@ -207,8 +249,18 @@ function HomeScreen({ navigation }) {
                       buttonColor="#1E2430"
                       textColor="#FFFFFF"
                       labelStyle={styles.actionBtnLabel}
-                      onPress={() => navigation.navigate('UserGraph', { rankedUsers: [] })}
-                      icon="share-variant"
+                      onPress={() =>
+                        navigation.navigate('UserGraph', {
+                          rankedUsers: activeRankedUsers,
+                          userId: currentUser?.uid,
+                          fromScreen: 'Home',
+                        })
+                      }
+                      icon={() => (
+                        <View style={styles.iridescentStarBadge}>
+                          <Ionicons name="sparkles" size={12} color="#FFFFFF" />
+                        </View>
+                      )}
                     >
                       Affinity Graph
                     </Button>
@@ -222,7 +274,7 @@ function HomeScreen({ navigation }) {
                   <View style={styles.tagRow}>
                     <Text style={[styles.tagLabel, { color: '#D4F458' }]}>📖 DAILY SONG MEMOIR</Text>
                   </View>
-                  <Text style={styles.cardTitle}>Capture Today's Musical Memoir</Text>
+                  <Text style={styles.cardTitle}>Capture Today's Song Memoir</Text>
                   <Text style={styles.cardText}>
                     Anchor your memories to music. Reflect on the single song defining your day and browse the community memoir feed.
                   </Text>
@@ -466,6 +518,15 @@ const styles = StyleSheet.create({
   actionBtnLabel: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  iridescentStarBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#9333EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 2,
   },
 });
 

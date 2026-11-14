@@ -48,11 +48,15 @@ export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
 }
 
 export function deriveVibeMatchPreview(rankedUsers = []) {
-  if (Array.isArray(rankedUsers) && rankedUsers.length > 0 && rankedUsers[0]?.username) {
+  if (Array.isArray(rankedUsers) && rankedUsers.length > 0) {
     const top = rankedUsers[0];
-    const scoreVal = top.similarityScore ?? top.score ?? 0.88;
-    const pct = Math.round(Number(scoreVal) * (Number(scoreVal) <= 1 ? 100 : 1));
-    return `Top Match: @${top.username} • ${pct}% Vibe Match`;
+    const rawName = top.username || top.displayName || top.uname;
+    if (rawName) {
+      const cleanName = String(rawName).replace(/^@/, '');
+      const scoreVal = top.similarityScore ?? top.score ?? top.totalScore ?? 0.88;
+      const pct = Math.round(Number(scoreVal) * (Number(scoreVal) <= 1 ? 100 : 1));
+      return `Top Match: @${cleanName} • ${pct}% Vibe Match`;
+    }
   }
   return 'Compare your signature 13 tracks to find your top Vibe Match';
 }

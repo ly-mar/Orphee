@@ -13,15 +13,17 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { db, auth } from './firebaseConfig';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, setDoc } from 'firebase/firestore';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { sendFriendRequest } from './HandlingFriends';
 import {
   sanitizeCompatibilityScore,
   deduplicateRankedUsers,
   formatListenerDisplayName,
+  computeSimilarityMatrix,
 } from './utils/algorithmUtils';
 import { UserAvatar } from './utils/avatarUtils';
+import { getCachedRankedUsers, setCachedRankedUsers } from './utils/sessionCache';
 
 export { sanitizeCompatibilityScore };
 
@@ -65,7 +67,15 @@ async function resolveUserRecord(identifier) {
 }
 
 function RankedUsers({ route, navigation }) {
-  const { rankedUsers = [], userId = auth.currentUser?.uid || '' } = route?.params || {};
+  const routeRankedUsers = route?.params?.rankedUsers;
+  const initialUserId = route?.params?.userId || auth.currentUser?.uid || '';
+  const [userId] = useState(initialUserId);
+  const [rankedUsers, setRankedUsers] = useState(() => {
+    if (Array.isArray(routeRankedUsers) && routeRankedUsers.length > 0) {
+      return routeRankedUsers;
+    }
+    return (initialUserId ? getCachedRankedUsers(initialUserId) : null) || [];
+  });
   const [usernames, setUsernames] = useState({});
   const [userIds, setUserIds] = useState({});
   const [userImages, setUserImages] = useState({});
@@ -79,6 +89,99 @@ function RankedUsers({ route, navigation }) {
 
     const hydrateLeaderboard = async () => {
       setHydrating(true);
+
+      let listToHydrate = rankedUsers;
+      const currentUid = userId || auth.currentUser?.uid;
+
+      if (!Array.isArray(listToHydrate) || listToHydrate.length === 0) {
+        if (currentUid) {
+          const cached = getCachedRankedUsers(currentUid);
+          if (Array.isArray(cached) && cached.length > 0) {
+            listToHydrate = cached;
+          } else {
+            try {
+              const rankSnap = await getDoc(doc(db, 'ranking', currentUid));
+              if (
+                rankSnap.exists() &&
+                Array.isArray(rankSnap.data()?.rankings) &&
+                rankSnap.data().rankings.length > 0
+              ) {
+                listToHydrate = rankSnap.data().rankings;
+                setCachedRankedUsers(currentUid, listToHydrate);
+              } else {
+                const playlistsSnap = await getDocs(collection(db, 'playlists'));
+                const userPlaylists = [];
+                playlistsSnap.forEach((docSnap) => {
+                  const d = docSnap.data();
+                  if (!d || !d.songs) return;
+                  const songs = Array.isArray(d.songs) ? d.songs : Object.values(d.songs || {});
+                  const valid = songs.filter((s) => s && s.trackId);
+                  if (valid.length === 0) return;
+                  userPlaylists.push({
+                    username: docSnap.id,
+                    trackIds: valid.map((s) => s.trackId),
+                    artistIds: valid.map((s) => s.artistId),
+                    primaryGenres: valid.map((s) => s.primaryGenreName),
+                    releaseDates: valid.map((s) => s.releaseDate),
+                  });
+                });
+
+                const currentUserInList = userPlaylists.some((p) => p.username === currentUid);
+                if (!currentUserInList) {
+                  const userDocSnap = await getDoc(doc(db, 'users', currentUid));
+                  const uData = userDocSnap.exists() ? userDocSnap.data() : null;
+                  const userSongs = (uData?.songs || uData?.your13 || []).filter((s) => s && s.trackId);
+                  if (userSongs.length > 0) {
+                    userPlaylists.unshift({
+                      username: currentUid,
+                      trackIds: userSongs.map((s) => s.trackId),
+                      artistIds: userSongs.map((s) => s.artistId),
+                      primaryGenres: userSongs.map((s) => s.primaryGenreName),
+                      releaseDates: userSongs.map((s) => s.releaseDate),
+                    });
+                  }
+                }
+
+                if (userPlaylists.length > 0) {
+                  const matrix = computeSimilarityMatrix(userPlaylists, [0.5, 0.35, 0.075, 0.075]);
+                  const currentIdx = userPlaylists.findIndex((p) => p.username === currentUid);
+                  const baseIdx = currentIdx !== -1 ? currentIdx : 0;
+                  listToHydrate = userPlaylists
+                    .map((up, idx) => ({
+                      uid: up.username,
+                      uname: up.username,
+                      totalScore: Number(matrix[baseIdx][idx]) || 0,
+                    }))
+                    .sort((a, b) => b.totalScore - a.totalScore)
+                    .slice(0, 50);
+
+                  if (listToHydrate.length > 0) {
+                    setCachedRankedUsers(currentUid, listToHydrate);
+                    try {
+                      await setDoc(
+                        doc(db, 'ranking', currentUid),
+                        {
+                          rankings: listToHydrate,
+                          updatedAt: new Date().toISOString(),
+                        },
+                        { merge: true }
+                      );
+                    } catch (_) {}
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn('RankedUsers auto-hydration notice:', err);
+            }
+          }
+        }
+      }
+
+      if (isMounted && Array.isArray(listToHydrate) && listToHydrate.length > 0) {
+        setRankedUsers(listToHydrate);
+      }
+
+      const safeList = Array.isArray(listToHydrate) ? listToHydrate : [];
       const fetchedUsernames = {};
       const fetchedUserIds = {};
       const fetchedImages = {};
@@ -91,7 +194,7 @@ function RankedUsers({ route, navigation }) {
           if (currentUserRequestsDoc.exists()) {
             requestsData = currentUserRequestsDoc.data();
           }
-        } catch (_) { }
+        } catch (_) {}
       }
 
       const {
@@ -101,7 +204,7 @@ function RankedUsers({ route, navigation }) {
       } = requestsData;
 
       await Promise.all(
-        rankedUsers.map(async (user) => {
+        safeList.map(async (user) => {
           const key = user.uname || user.uid || 'unknown';
           const record = await resolveUserRecord(key);
           const resolvedUid = record.uid || key;
@@ -244,7 +347,7 @@ function RankedUsers({ route, navigation }) {
   };
 
   const renderRanking = () => {
-    if (hydrating && rankedUsers.length > 0) {
+    if (hydrating) {
       return (
         <View style={styles.emptyBox}>
           <ActivityIndicator size="large" color="#FF8C00" style={{ marginBottom: 12 }} />
@@ -362,9 +465,18 @@ function RankedUsers({ route, navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerBar}>
-        <TouchableOpacity style={styles.headerBackBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.headerBackBtn}
+          onPress={() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate('Home');
+            }
+          }}
+        >
           <FontAwesome5 name="arrow-left" size={14} color="#FFFFFF" />
-          <Text style={styles.headerBackText}>Your13</Text>
+          <Text style={styles.headerBackText}>Back</Text>
         </TouchableOpacity>
 
         <View style={styles.headerTitleWrap}>

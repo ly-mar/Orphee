@@ -6,6 +6,7 @@ const cache = {
   memoirsByUid: new Map(),
   collectiveThemes: null,
   homeDashboardByUid: new Map(),
+  rankedUsersByUid: new Map(),
 };
 
 export function getCachedUserProfile(uid) {
@@ -68,10 +69,21 @@ export function setCachedHomeDashboard(uid, data) {
   });
 }
 
+export function getCachedRankedUsers(uid) {
+  if (!uid) return null;
+  return cache.rankedUsersByUid.get(String(uid)) || null;
+}
+
+export function setCachedRankedUsers(uid, list) {
+  if (!uid || !Array.isArray(list)) return;
+  cache.rankedUsersByUid.set(String(uid), [...list]);
+}
+
 export function clearSessionCache() {
   cache.userProfilesByUid.clear();
   cache.userPlaylistsByUid.clear();
   cache.memoirsByUid.clear();
   cache.collectiveThemes = null;
   cache.homeDashboardByUid.clear();
+  cache.rankedUsersByUid.clear();
 }
