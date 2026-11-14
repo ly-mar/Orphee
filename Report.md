@@ -1,350 +1,447 @@
-# Actionable Engineering Specification: "The Collective Groove" Upgrade (Antigravity IDE)
+# Actionable Engineering Specification: Performance, UI Polish, Architecture & Rebranding (`Orphee`)
 
-This specification upgrades **The Collective** (`TheCollective.js`, `ThemeDetails.js`, `Pickerchoosers.js`, `AddSong.js`) from an anonymous, unbounded playlist list into a scarce, socially attributable, and continuously playable curation loop.
+This specification is designed for **Gemini 3.8 Flash on Antigravity IDE** to resolve navigation latency, image decoding delays, `HomeScreen` vs. `Taskbar` redundancy, `UserProfileScreen` `Your13` list visibility, `Pickerchoosers` layout collisions, terminology inconsistencies, and the global rebrand from **TuneHub** to **Orphee** and **Music Twins** to **Vibe Check**.
 
 ---
 
-## 0. Execution Guardrails & Verification Gate
+## 0. Audit of Features Existing Under Different Names
 
-* **Characterization-First Workflow:** Before modifying screen components, implement and unit-test pure state/validation helpers in `utils/collectiveGrooveUtils.js` and `__tests__/collectiveGroove.test.js`.
-* **Dual-Shelf Parity:** The codebase routes Collective themes through both `ThemeDetails.js` and `Pickerchoosers.js`. Every UI and data-model upgrade below must be applied consistently to both screens (or extracted into a shared sub-component imported by both) so behavior never diverges based on entry route.
+Before executing code changes, an audit of the repository (`Orphee-e28ab3073af6512d8f3d48ec489e1d8cc2940832`) identified **5 identical features/concepts referred to by conflicting names across screens**. All 5 must be unified in **WP-06**:
 
+| Feature / Concept | Conflicting Names Found in Codebase | Standardized Canonical Name |
+| --- | --- | --- |
+| **App Brand** | `TuneHub`, `Tunehub`, `TubeApp`, `Orphee` (`WelcomeScreen.js`, `HomeScreen.js`, `app.json`)
 
-* **Backward Compatibility:** Existing Firestore `themes/{themeId}` track entries lack `curatorUid`, `curatorName`, `linerNote`, and `coSigners`. All helpers must gracefully fall back for legacy tracks (`curatorName: 'Community'`, `linerNote: ''`, `coSigners: []`).
-* **Standard Verification Gate (Run After Every WP):**
+ | **`Orphee`** |
+| **Compatibility / Matching** | `Find Music Twins`, `Music Twins`, `Your Twins`, `Sonic Twins`, `RankedUsers` (`HomeScreen.js`, `RankedUsers.js`, `UserGraph.js`)
+
+ | **`Vibe Check`** (individual match: **`Vibe Match`**) |
+| **13-Track Personal List** | `Your13`, `My 13`, `Top 13`, `Hit List`, `Choices` (`Your13.js`, `HomeScreen.js`, `ProfileScreen.js`, `ViewChoicesScreen.js`)
+
+ | **`Your13`** |
+| **Daily Song Reflection** | `Memoir`, `Song Memoir`, `Daily Memoir`, `Musical Memoir` (`Memoir.js`, `MemoirHistoryScreen.js`, `UserProfileScreen.js`, `Pickerchoosers.js`)
+
+ | **`Song Memoir`** (plural tab: **`Song Memoirs`**) |
+| **Community Endorsements** | `Co-Signs`, `Community Votes`, `Votes`, `+1` (`Pickerchoosers.js` header says `"Ranked by Community Votes"` while cards say `"Co-Signs"`)
+
+ | **`Co-Signs`** (`"Ranked by Community Co-Signs"`) |
+
+---
+
+## 1. Execution Guardrails & Verification Gate
+
+Run the verification gate after **every** Work Package (`WP-01` through `WP-06`) before committing:
+
 ```bash
-npx jest --ci --no-watchman   # Expect 15/15 suites passing with 0 failures
-npx expo export --platform web --output-dir /tmp/tubeapp-web-check # Expect exit code 0
-
-```
-
-
-
----
-
-## 1. Shared Data Schema & Pure Helpers (`utils/collectiveGrooveUtils.js`)
-
-Create `utils/collectiveGrooveUtils.js` to centralize constants, quota validation, liner-note sanitization, and Crate Radio queue logic:
-
-```javascript
-export const MAX_SUBMISSIONS_PER_DROP = 1;
-export const MAX_COSIGNS_PER_DROP = 3;
-export const MAX_LINER_NOTE_LENGTH = 140;
-export const CRATE_RADIO_LIMIT = 13;
-
-/**
- * Normalizes a single track entry inside a Collective theme document,
- * preserving backward compatibility with legacy anonymous song entries.
- */
-export function normalizeCollectiveTrack(rawTrack, index = 0) { ... }
-
-/**
- * Computes the current user's remaining submission and Co-Sign quotas for a theme.
- * Returns:
- * {
- *   submissionsUsed: number,       // 0 or 1
- *   submissionsRemaining: number,  // 1 or 0
- *   canSubmit: boolean,
- *   coSignsUsed: number,           // 0..3
- *   coSignsRemaining: number,      // 3..0
- *   canCoSign: boolean,
- * }
- */
-export function deriveUserDropQuota(tracks = [], currentUid = null) { ... }
-
-/**
- * Validates and sanitizes the optional 1-line "Liner Note" pitch (<= 140 chars).
- * Strips line breaks and trims excess whitespace.
- */
-export function sanitizeLinerNote(input = '') { ... }
-
-/**
- * Validates whether currentUid can Co-Sign a specific track.
- * Blocks if: !currentUid, already co-signed this track, or coSignsRemaining <= 0.
- */
-export function validateCoSignAction(tracks = [], targetTrackKey, currentUid) { ... }
-
-/**
- * Builds the ordered Top 13 playable queue for "Crate Radio", sorted by votes descending.
- */
-export function buildCrateRadioQueue(tracks = [], limit = CRATE_RADIO_LIMIT) { ... }
+npx jest --ci --no-watchman
+npx expo export --platform web --output-dir /tmp/orphee-web-check
 
 ```
 
 ---
 
-## 2. Atomic Work Packages (Execute One Per Commit)
+## 2. Atomic Work Packages
 
-### WP-01: Scarcity Engine (1 Submission + 3 Co-Signs Quota) & 140-Char "Liner Note" Pitch
+### WP-01: Eliminate Navigation Latency (`Home` $\leftrightarrow$ `ProfileScreen`, `Pickerchoosers` $\rightarrow$ `TheCollective`, and `Any` $\rightarrow$ `Home`)
 
-* **Goal:** Enforce a strict per-theme budget of **1 track nomination** and **3 upvotes ("Co-Signs")** per user, and let nominators attach a 140-character "Liner Note" pitch in `AddSong.js` that renders under the track title in `ThemeDetails.js` and `Pickerchoosers.js`.
+* **Root Cause Diagnosis:**
+1. **`Home` $\rightarrow$ `ProfileScreen` (`"Loading @Sigma..."` delay):** `ProfileScreen.js` initializes with empty state and blocks rendering behind a `"Loading @username..."` full-screen gate while awaiting fresh Firestore snapshots (`users/{uid}` and `memoirs`), even though `HomeScreen.js` already fetched the exact same user document seconds earlier.
+
+
+2. **`Pickerchoosers` $\rightarrow$ `TheCollective` lag:** Pressing Back in `Pickerchoosers.js` or switching tabs re-mounts `TheCollective.js`, which re-fetches `themes` from Firestore with no in-memory cache and re-decodes large local images.
+
+
+3. **`Any Screen` $\rightarrow$ `Home` blank screen / lag:** `Taskbar.js` calls `navigation.navigate('Home')`. Whenever `HomeScreen.js` mounts or re-hydrates, its `!isHydrated` skeleton gate blocks rendering until Firestore listeners fire.
+
+
 
 
 * **Files to Touch:**
-* `utils/collectiveGrooveUtils.js` *(new)*
-* `AddSong.js`
+* `utils/sessionCache.js` *(new)*
+* `HomeScreen.js`
 
 
-* `ThemeDetails.js`
+* `ProfileScreen.js`
+
+
+* `TheCollective.js`
 
 
 * `Pickerchoosers.js`
 
 
-* `__tests__/collectiveGroove.test.js` *(new)*
+* `Taskbar.js`
+
+
+* `__tests__/homeAndUiSafety.test.js`
+
+
 
 
 * **Implementation Steps:**
-1. **Unit Tests (`__tests__/collectiveGroove.test.js`):**
-* Verify `deriveUserDropQuota` counts tracks where `track.curatorUid === currentUid` (max 1) and tracks where `track.voters` / `track.coSigners` includes `currentUid` (max 3).
-* Verify `sanitizeLinerNote` collapses newlines to spaces, trims whitespace, and clamps length to `140` characters.
-* Verify `validateCoSignAction` returns `{ allowed: false, reason: 'quota_reached' }` when the user has already used all 3 Co-Signs on a theme, and `{ allowed: false, reason: 'already_cosigned' }` on duplicate taps.
+1. **Create a Synchronous In-Memory Stale-While-Revalidate Cache (`utils/sessionCache.js`):**
+* Store keyed snapshots in memory for:
+* `userProfilesByUid[uid]` (`{ username, email, bio, profilePicture, songs, following, followers, updatedAt }`)
+* `memoirsByUid[uid]` (`Array<Memoir>`)
+* `collectiveThemes` (`Array<Theme>` and `themesById[themeId]`)
+* `homeDashboardByUid[uid]`
 
 
-2. Liner Note Input & 1-Submission Guard in `AddSong.js`:
+* Export synchronous getters and setters (`getCachedUserProfile(uid)`, `setCachedUserProfile(uid, data)`, `getCachedThemes()`, `setCachedThemes(themes)`, `clearSessionCache()`).
+* Call `clearSessionCache()` on sign-out in `ProfileScreen.js` / `SettingsScreen.js`.
 
 
-* Above the search/results list (or in a confirmation bar when a song is selected), render a dark input field (`backgroundColor: '#151821'`, `borderColor: '#242936'`):
-* Placeholder: `"Add a liner note pitch (e.g., 'Wait for the bassline switch at 1:42')..."`
-* `maxLength={140}` with a live counter pill (`"${linerNote.length}/140"`).
 
 
-* Before writing the track to Firestore `themes/{themeId}`, check `deriveUserDropQuota(themeTracks, currentUid)`:
-* If `!canSubmit`, block the write and trigger `toast.show({ kind: 'info', message: 'You already nominated 1 track for this drop.' })`.
+2. Instant `ProfileScreen.js` Mount (Zero `"Loading @Sigma..."` Gate):
 
 
-* Persist metadata on the newly nominated track object:
+* Initialize `ProfileScreen.js` state synchronously from `getCachedUserProfile(currentUid)` and `getCachedMemoirs(currentUid)`.
+* If cached user data exists (or `auth.currentUser` is available), **render the full `ProfileScreen` layout immediately (0ms)** using `auth.currentUser.displayName` / cached fields while the Firestore `onSnapshot` listener refreshes in the background.
+* Never replace the entire screen with `"Loading @Sigma..."` once any profile data or `auth.currentUser` is present.
+
+
+3. Instant `HomeScreen.js` Mount:
+
+
+* Seed `HomeScreen.js` state from `getCachedUserProfile(currentUid)` and `setIsHydrated(true)` immediately on mount if cached data exists.
+* Whenever `HomeScreen.js` receives a `users/{uid}` snapshot, write it to `setCachedUserProfile(currentUid, docData)` so subsequent visits to `ProfileScreen` or `HomeScreen` are instant.
+
+
+4. Instant Back-Navigation from `Pickerchoosers.js` to `TheCollective.js`:
+
+
+* In `TheCollective.js`, initialize the themes list synchronously from `getCachedThemes()` so the grid renders in `0ms` without waiting for Firestore.
+* In `Pickerchoosers.js`, ensure the top-left `← Back` button uses:
+
+
 ```javascript
-{
-  ...songData,
-  curatorUid: currentUid,
-  curatorName: currentUserDisplayName, // e.g., 'Sigma'
-  curatorAvatar: currentUserAvatarUrl || null,
-  linerNote: sanitizeLinerNote(linerNote),
-  voters: [currentUid], // Nominator automatically co-signs or starts at 1
-  coSigners: [{ uid: currentUid, username: currentUserDisplayName, avatar: currentUserAvatarUrl || null }],
-  createdAt: Date.now(),
+if (navigation.canGoBack()) {
+  navigation.goBack();
+} else {
+  navigation.navigate('TheCollective');
 }
 
 ```
 
 
-
-
-3. Quota Header Pill & Co-Sign Enforcement in `ThemeDetails.js` & `Pickerchoosers.js`:
-
-
-* In the shelf header, display a compact scarcity status bar:
-* **`Nominations: ${submissionsRemaining}/1 left`** • **`Co-Signs: ${coSignsRemaining}/3 left`**
-
-
-* When `submissionsRemaining === 0`, change the bottom CTA from `"+ Nominate a Track"` to a disabled pill reading `"✓ Nomination Used (1/1)"`.
-* Replace the `+1` vote button label with **`▲ Co-Sign (${score})`** (unvoted) and **`✓ Co-Signed (${score})`** (voted, `#D4F458` lime accent, `disabled={true}`).
-* If `coSignsRemaining === 0` on unvoted rows, style the button as disabled (`#1E2430`) and show an in-app toast if tapped (`"All 3 Co-Signs used for this drop."`).
-* Render `item.linerNote` (when non-empty) directly beneath the artist name in italicized `#94A3B8` text (`"“${item.linerNote}”"`).
+so React Navigation pops back to the already-mounted `TheCollective` screen instead of pushing a duplicate instance.
 
 
 
 
 * **Acceptance Criteria:**
-* A user can nominate at most 1 song and cast at most 3 Co-Signs per theme.
-* Nominating a track with a Liner Note saves and renders `"“Wait for the bassline switch at 1:42”"` beneath the track title in both `ThemeDetails.js` and `Pickerchoosers.js`.
-
-
+* Navigating `Home` $\rightarrow$ `ProfileScreen` renders the profile immediately with zero `"Loading @Sigma..."` screen.
+* Navigating `Pickerchoosers` $\rightarrow$ `TheCollective` and `Any Screen` $\rightarrow$ `Home` renders in `<50ms` with zero blank frames.
 
 
 
 ---
 
-### WP-02: Social Attribution (`Curated by @username` Pill + Stacked Co-Signer Avatars)
+### WP-02: Fix Image Loading Delays on `TheCollective.js`
 
-* **Goal:** Eliminate anonymous tracks by displaying a clickable **`Curated by @username`** pill and a stacked mini-avatar row of listeners who co-signed the track, routing to `UserProfileScreen.js`.
+* **Root Cause Diagnosis:**
+* `assets/80.jpg`, `assets/Airplanemode.jpg`, and `assets/Coplay.jpg` are multi-megapixel uncompressed JPEGs (~400–600 KB each) that are decoded on the UI thread when `TheCollective.js` mounts, and remote theme cover URLs / iTunes artwork URLs are not preloaded or given a placeholder surface.
+
+
 
 
 * **Files to Touch:**
-* `ThemeDetails.js`
+* `App.js`
+
+
+* `TheCollective.js`
+
+
+* `utils/imagePreloadUtils.js` *(new)*
+
+
+* **Implementation Steps:**
+1. Preload Bundled Theme Assets at App Startup (`utils/imagePreloadUtils.js` & `App.js`):
+
+
+* Create `preloadCoreThemeAssets()` using `expo-asset` (`Asset.loadAsync([require('../assets/Airplanemode.jpg'), require('../assets/80.jpg'), require('../assets/Coplay.jpg')])`) and `Image.prefetch` for any cached remote cover URLs.
+* Trigger `preloadCoreThemeAssets()` non-blockingly inside `App.js` `useEffect` on startup so the images are already decoded in memory before the user ever taps `The Collective`.
+
+
+2. Progressive Card Surface & Decoding Optimization in `TheCollective.js`:
+
+
+* Wrap every theme card image in a styled placeholder container (`backgroundColor: '#151821'`) with a subtle gradient/accent border so the card structure and title are 100% visible at `0ms` even before the bitmap finishes painting.
+* Pass `fadeDuration={150}` (Android) and `resizeMethod="resize"` / explicit `width` and `height` dimensions on `<Image>` in `TheCollective.js` so the browser/native compositor does not perform expensive layout recalculations.
+
+
+
+
+* **Acceptance Criteria:**
+* Opening `TheCollective.js` displays all theme cards immediately without popping or delayed image blanking.
+
+
+
+---
+
+### WP-03: Redesign `HomeScreen.js` to Eliminate Redundancy with `Taskbar.js`
+
+* **Root Cause Diagnosis:**
+* `Taskbar.js` already provides persistent 1-tap navigation to **`Your13`** and **`The Collective`**. Having big navigation cards on `HomeScreen.js` that also just link to `Your13` and `The Collective` makes the homepage a redundant menu rather than a destination.
+
+
+
+
+* **Solution — Transform `HomeScreen.js` into the "Orphee Pulse" Discovery Hub:**
+* Keep `Taskbar.js` as the sole navigation bar for **`Home`**, **`Your13`**, **`The Collective`**, **`Chat`**, and **`Profile`**.
+* Remove the redundant `"Your13"` and `"The Collective"` navigation link cards from `HomeScreen.js`.
+
+
+* Repurpose `HomeScreen.js` around the **three high-value social & discovery experiences that do NOT have dedicated Taskbar buttons**:
+1. **Primary Hero Card — `Vibe Check` (formerly Find Music Twins) & `Affinity Graph`:**
+* Displays the user's live top Vibe Match preview (e.g., `"Top Match: @Alpha • 88% Vibe Match"`) with two action buttons:
+* Primary CTA (`#FF8C00`): **`⚡ Run Vibe Check`** $\rightarrow$ routes to `RankedUsers.js`.
+
+
+* Secondary CTA (`#1E2430`): **`🕸️ View Affinity Graph`** $\rightarrow$ routes to `UserGraph.js`.
+
+
+
+
+
+
+2. **Daily `Song Memoir` Prompt & Community Memoir Feed:**
+* Displays today's Song Memoir status: if the user hasn't logged today's song reflection, show **`📖 Log Today's Song Memoir`** ($\rightarrow$ `Memoir.js`); if logged, show their current memoir card with a 1-tap `▶ Preview` button and a **`Browse Memoir History`** link ($\rightarrow$ `MemoirHistoryScreen.js`).
+
+
+
+
+3. **People & Notifications Quick Bar:**
+* Prominent search bar / card at the top of `HomeScreen.js`: **`🔍 Find Listeners & Friends`** ($\rightarrow$ `UserSearchScreen.js` / `FriendsScreen.js`) + the notification bell ($\rightarrow$ `NotifPage.js`).
+
+
+
+
+
+
+
+
+* **Files to Touch:**
+* `HomeScreen.js`
+
+
+* `utils/homeDashboardUtils.js`
+* `__tests__/homeAndUiSafety.test.js`
+
+
+
+
+* **Acceptance Criteria:**
+* `HomeScreen.js` no longer contains duplicate navigation buttons for `Your13` or `The Collective` (which live in `Taskbar.js`).
+* `HomeScreen.js` features **Vibe Check + Affinity Graph**, **Song Memoir**, and **Listener Search / Friends** as its primary interactive modules.
+
+
+
+---
+
+### WP-04: Fix `UserProfileScreen.js` So All 13 Tracks in `Your13` Are Visible
+
+* Root Cause Diagnosis (From Screenshot 1 - `@Sam`):
+
+
+* In `UserProfileScreen.js`, selecting the **`Your13 (13)`** tab renders a single horizontal row (`FlatList` with `horizontal={true}`) that only shows 3 cards (`Hands On`, `Runaway`, `FourFiveSecon...`) and clips the remaining 10 tracks off-screen. On Web and mobile, users cannot see the full list of 13 sounds on the page.
+
+
+
+
+* **Files to Touch:**
+* `UserProfileScreen.js`
+
+
+* `ProfileScreen.js` *(apply consistent vertical/grid list option if `ProfileScreen` uses the same clipped horizontal strip)*
+
+
+
+
+* **Implementation Steps:**
+1. Replace the Clipped 3-Card Horizontal Strip with a Full 13-Track Vertical List on `UserProfileScreen.js`:
+
+
+* Under the **`Your13 (13)`** tab on `UserProfileScreen.js`, render all 13 tracks in a **numbered vertical list** (or a 2-column responsive grid / vertical tracklist inside the main `ScrollView`) so every single song (`#1` through `#13`) is visible by scrolling down the page.
+
+
+* Each track row in `@Sam`'s `Your13` list must display:
+* **Rank badge (`#1`–`#13`)** (`width: 28`, `#FF8C00` bold text)
+* **Album artwork (`48×48`, `borderRadius: 8`)**
+* **Full Track Title & Artist Name** (`flex: 1`, `numberOfLines: 1`)
+* **Inline `▶` / `■` 30s Audio Preview button** wired to `audioPreviewController.js` so visitors can actually listen to `@Sam`'s 13 songs right on their profile page.
+
+
+* Ensure the outer `ScrollView` in `UserProfileScreen.js` has `flex: 1` and `contentContainerStyle={{ paddingBottom: 96 }}` so all 13 rows scroll smoothly on both Web and mobile.
+
+
+
+
+* **Acceptance Criteria:**
+* Visiting `@Sam` (or any user) on `UserProfileScreen.js` shows all 13 tracks in a clean, scrollable vertical list with rank numbers (`#1`–`#13`), album art, title, artist, and playable 30s preview buttons.
+
+
+
+---
+
+### WP-05: Redesign `Pickerchoosers.js` Track Row & Header Layout
+
+* Root Cause Diagnosis (From Screenshot 2 - `Airplane Mode`):
+
+
+1. **Severe Button Overlap:** The `✓ ✓ Co-Signed (6)` / `↑ ▲ Co-Sign (3)` button is positioned or sized such that it **collides with and covers** the `Curated by @Community` pill (`Curated by @Com...` is cut off underneath the lime button).
+
+
+2. **Duplicate Icons in Buttons:**
+* Header CTA renders **two play icons**: `▷ ▶ Play Crate (Top 13)` (an `<Ionicons name="play-outline"/>` next to a text `"▶"`).
+
+
+* Co-Sign button renders **two checkmarks or two arrows**: `✓ ✓ Co-Signed (6)` and `↑ ▲ Co-Sign (3)` (an `<Ionicons/>` icon next to a text `"✓"` or `"▲"`).
+
+
+
+
+3. **Duplicate Co-Sign Count:** Each card shows `(6)` inside `Co-Signed (6)` **and** repeats `6 Co-Signs` in orange text at the bottom of the card.
+
+
+4. **Missing Artwork Fallbacks:** Legacy tracks without `artworkUrl100` show a generic music note icon instead of resolving artwork via `itunesService.js` or rendering a clean ranked badge.
+
+
+
+
+* **Files to Touch:**
+* `Pickerchoosers.js`
+
+
+
+
+* **Implementation Steps:**
+1. Remove Duplicate Icons (`Pickerchoosers.js`):
+
+
+* In the Crate Radio button: keep **only** the `<Ionicons>` icon and set the text to **`Play Crate (Top 13)`** (or **`Stop Crate Radio`**)—remove the literal `▶` and `■` characters from the text string.
+* In the Co-Sign button: keep **only** the `<Ionicons "caret-up"} "checkmark-circle" : ? name="{hasVoted"/>` icon and set the label to **`Co-Signed (${score})`** or **`Co-Sign (${score})`**—remove the literal `✓` and `▲` characters from the label string.
+
+
+2. Fix the Flex Row & Eliminate Overlap (`Pickerchoosers.js`):
+
+
+* Restructure each track card into a strict **2-zone vertical or non-overlapping flex layout**:
+* **Top Row (`flexDirection: 'row', alignItems: 'center'`):**
+* Left: Rank Badge (`#1`) + `52×52` Artwork (`marginRight: 12`).
+* Center (`flex: 1, minWidth: 0, paddingRight: 8`): Track Title (`fontSize: 16, fontWeight: '700', color: '#FFFFFF'`) + Artist Subtitle (`fontSize: 13, color: '#94A3B8'`) + optional italic Liner Note.
+* Right (`flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6`): Compact Preview button (`36×36` icon button) + `⋯` Overflow button (`36×36` icon button).
+
+
+* **Bottom Footer Row (`flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#1E2430'`):**
+* Left (`flex: 1, flexDirection: 'row', alignItems: 'center', minWidth: 0, marginRight: 8`): **`Curated by @username`** pill (`maxWidth: '70%'`, `numberOfLines: 1`) + stacked Co-Signer mini-avatars (`20×20`).
+* Right (`flexShrink: 0`): Compact **`Co-Sign (${score})`** / **`Co-Signed (${score})`** pill (`paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999`).
+
+
+
+
+* **Delete the redundant orange `"6 Co-Signs"` text line** at the bottom of the card since the count is already inside the `Co-Sign (6)` pill.
+
+
+
+
+
+
+* **Acceptance Criteria:**
+* Zero overlap between `Curated by @...` and the `Co-Sign` button at any mobile/web width.
+* No double icons (`▷ ▶`, `✓ ✓`, `↑ ▲`) anywhere in `Pickerchoosers.js`.
+
+
+* No duplicate Co-Sign counter text on track cards.
+
+
+
+---
+
+### WP-06: Global Rebrand (`TuneHub` $\rightarrow$ `Orphee`, `Music Twins` $\rightarrow$ `Vibe Check`) & Terminology Unification
+
+* **Goal:** Execute the app-wide rebrand and unify the 5 inconsistent feature names identified in Section 0.
+* **Files to Touch:**
+* `app.json`
+
+
+* `WelcomeScreen.js`
+
+
+* `LoginScreen.js`
+
+
+* `SignUpScreen.js`
+
+
+* `HomeScreen.js`
+
+
+* `RankedUsers.js`
+
+
+* `UserGraph.js`
+
+
+* `ProfileScreen.js`
+
+
+* `UserProfileScreen.js`
+
+
+* `TheCollective.js`
 
 
 * `Pickerchoosers.js`
 
 
-* `utils/collectiveGrooveUtils.js`
-* `utils/avatarUtils.js`
-* `__tests__/collectiveGroove.test.js`
+* `Memoir.js` & `MemoirHistoryScreen.js`
 
 
-* **Implementation Steps:**
-1. **Attribution Normalization (`utils/collectiveGrooveUtils.js`):**
-* Add `resolveTrackSocialAttribution(track, usersByIdMap)` that returns:
-* `curatorUid`: `track.curatorUid || track.addedBy || track.userId || null`
-* `curatorHandle`: formatted `@username` (falling back to `@Community` for legacy anonymous seed tracks)
-* `coSignerAvatars`: up to 3 deduplicated voter profile objects (`{ uid, username, avatar }`) plus `overflowCount` (`Math.max(0, totalVoters - 3)`).
+* `Taskbar.js`
 
 
+* `App.js`
 
 
-2. Curator Pill & Profile Routing (`ThemeDetails.js`, `Pickerchoosers.js`):
-
-
-* On each track row, render a compact interactive pill (`backgroundColor: '#1E2430'`, `borderRadius: 999`, `paddingHorizontal: 8, paddingVertical: 3`):
-* Text: **`Curated by @${curatorUsername}`** (`color: '#FF8C00'` for `@username`).
-* `onPress`: If `curatorUid` is present and `curatorUid !== auth.currentUser?.uid`, call `navigation.navigate('UserProfileScreen', { userId: curatorUid, username: curatorUsername })` (or navigate to `ProfileScreen` if it is the current user).
-
-
-
-
-
-
-3. **Stacked Mini-Avatars of Co-Signers:**
-* Next to the curator pill (or beneath the Liner Note), render up to 3 overlapping `20×20` mini-avatars (`marginLeft: -6` after index 0, `borderWidth: 1.5, borderColor: '#151821'`) using the shared `UserAvatar` / initials fallback logic from `utils/avatarUtils.js`.
-* If more than 3 users co-signed, append a `+${overflowCount}` badge (`fontSize: 11, color: '#94A3B8'`).
-
-
-
-
-* **Acceptance Criteria:**
-* Every track row displays `Curated by @<username>` and stacked `20×20` avatars of its Co-Signers.
-* Tapping `Curated by @Sigma` navigates directly to `UserProfileScreen.js` (or `ProfileScreen.js` if self).
-
-
-* Legacy tracks without `curatorUid` render `Curated by @Community` cleanly without crashing.
-
-
-
----
-
-### WP-03: Continuous "Crate Radio" Sequential Preview Player (Top 13)
-
-* **Goal:** Add a **`▶ Play Crate (Top 13)`** header button and sticky/inline mini-player in `ThemeDetails.js` and `Pickerchoosers.js` that chains 30-second track previews sequentially through `audioPreviewController.js` with an inline progress bar and a 1-tap **`▲ Co-Sign`** button.
-
-
-* **Files to Touch:**
-* `audioPreviewController.js`
-* `ThemeDetails.js`
-
-
-* `Pickerchoosers.js`
-
-
-* `utils/collectiveGrooveUtils.js`
-* `__tests__/audioPreview.test.js`
+* `__tests__/*.test.js` *(update any test assertions checking old string literals)*
 
 
 
 
 * **Implementation Steps:**
-1. **Extend `createAudioPreviewController` (`audioPreviewController.js`):**
-* Add queue & progress support while keeping existing `playPreview(trackId, previewUrl)` callers 100% backward-compatible:
-* `playQueue(tracksQueue, startIndex = 0)`: Resolves missing/expired `previewUrl`s on-demand via `resolveFreshPreviewUrl(track)`, plays track `startIndex`, and automatically advances to `startIndex + 1` when the 30s preview finishes (`didJustFinish` on `expo-av` / `onended` on Web `window.Audio`).
-* `skipNext()` / `skipPrev()` / `stopQueue()`.
-* `onProgress((state) => ...)`: Emits `{ activeTrackId, activeTrack, queueIndex, queueLength, progressRatio, isPlaying }` every `250ms` so the UI can render a smooth `0.0 -> 1.0` progress bar.
+1. **Rebrand `TuneHub` $\rightarrow$ `Orphee`:**
+* Search case-insensitively for `tunehub` across all `.js` and `.json` files:
+* `app.json`: set `"name": "Orphee"` and `"slug": "orphee"`.
+* `WelcomeScreen.js`, `LoginScreen.js`, `SignUpScreen.js`, `HomeScreen.js`, `SettingsScreen.js`, `Feedback.js`: replace every user-facing `"TuneHub"` / `"Tunehub"` string with **`"Orphee"`**.
 
 
 
 
-2. Header CTA & Inline Crate Radio Deck (`ThemeDetails.js`, `Pickerchoosers.js`):
-
-
-* In the shelf header, add a primary `#FF8C00` button: **`▶ Play Crate (Top 13)`** (toggles to **`■ Stop Crate Radio`** when active).
-* When Crate Radio is playing, display an Obsidian mini-player card (`backgroundColor: '#151821'`, `borderColor: '#FF8C00'`, `borderWidth: 1`) pinned just below the header:
-* Shows: `"CRATE RADIO • #${queueIndex + 1} OF ${queueLength}"`, current track title & artist, `"⏭ Next"` button, and a 1-tap **`▲ Co-Sign`** pill for the currently playing track (wired to the same 3-Co-Sign quota handler from WP-01).
-* Bottom edge of the mini-player renders a `3px` animated progress bar (`width: '${Math.round(progressRatio * 100)}%'`, `backgroundColor: '#D4F458'`).
-
-
-* Highlight the currently playing track row in the `FlatList` with a `#D4F458` left border indicator.
-* Ensure `navigation.addListener('blur', ...)` and component unmount call `stopQueue()` so audio never leaks across screens.
+2. **Rebrand `Find Music Twins` / `Music Twins` $\rightarrow$ `Vibe Check`:**
+* Search case-insensitively for `twin` / `music twins` across all `.js` files:
+* `HomeScreen.js`: `"Find Music Twins"` $\rightarrow$ **`"Vibe Check"`**.
+* `RankedUsers.js`: Header and copy `"Music Twins"` / `"Find Your Music Twins"` $\rightarrow$ **`"Vibe Check"`**; individual match badge `"Music Twin"` $\rightarrow$ **`"Vibe Match"`**.
+* `UserGraph.js` & `GraphVisualization.js`: `"Music Twins Graph"` / `"Twins"` $\rightarrow$ **`"Vibe Check Graph"`** / **`"Vibe Matches"`**.
+* `App.js`: Update `<Stack.Screen 'Vibe Check' name="RankedUsers" options="{{" title: }}/>`.
 
 
 
 
-* **Acceptance Criteria:**
-* Tapping `▶ Play Crate (Top 13)` plays the #1 track's 30s preview, updates the progress bar, and automatically advances to #2 when #1 finishes (or when `⏭ Next` is tapped).
-* Tapping `▲ Co-Sign` on the Crate Radio mini-player increments the currently playing track's score and updates the user's remaining Co-Sign quota.
-* Navigating away from the screen stops Crate Radio playback immediately.
+3. **Unify the Remaining Feature Names Across Screens:**
+* Standardize `"Ranked by Community Votes"` in `Pickerchoosers.js` to **`"Ranked by Community Co-Signs"`**.
 
 
-
----
-
-### WP-04: 1-Tap Curation Bridge (`+ Your13` & `📖 Write Memoir` Overflow Actions)
-
-* **Goal:** Let users bridge any track discovered in The Collective straight into their personal **`Your13`** hit list or **`Song Memoir`** reflection in 1 tap.
-* **Files to Touch:**
-* `ThemeDetails.js`
+* Standardize `"Memoir"` tab label on `ProfileScreen.js` and `UserProfileScreen.js` to **`"Song Memoirs"`**.
 
 
-* `Pickerchoosers.js`
-
-
-* `utils/playlistUtils.js`
-* `__tests__/collectiveGroove.test.js`
-
-
-* **Implementation Steps:**
-1. **Helper for 1-Tap `Your13` Addition (`utils/playlistUtils.js`):**
-* Add `appendTrackToYour13Safely({ currentList, candidateTrack, isLocked })`:
-* Checks `isLocked` (from `LockContext.js`)—if locked, returns `{ ok: false, reason: 'locked' }`.
-
-
-* Checks if the track is already in `currentList` (via `deduplicateTracks` / `normalizeYour13List`)—if duplicate, returns `{ ok: false, reason: 'duplicate' }`.
-* Checks if `currentList.length >= 13`—if full, returns `{ ok: false, reason: 'full' }`.
-* Otherwise appends the normalized track and returns `{ ok: true, nextList, slotNumber: nextList.length }`.
-
-
-
-
-2. Row Quick-Action Menu (`ThemeDetails.js`, `Pickerchoosers.js`):
-
-
-* Next to the `▲ Co-Sign` pill on each track row, add a `⋯` (or `+`) quick-action button (`minWidth: 40, minHeight: 44`) that opens a compact dark action sheet/popover for that track with two actions:
-1. **`+ Add to Your13`**:
-* Reads the user's `users/{uid}` playlist and `LockContext` state.
-
-
-* Calls `appendTrackToYour13Safely`. On success, writes the updated list to `users/{uid}` and shows `toast.show({ kind: 'success', message: 'Added "${track.title}" to Your13 (Slot #${slotNumber})!' })`.
-* If full (`13/13`) or locked, shows an informative toast (`"Your13 is currently locked"` or `"Your13 is full (13/13) — edit your slots in Your13"`).
-
-
-2. **`📖 Write Song Memoir`**:
-* Calls `navigation.navigate('Memoir', { song: normalizedItunesTrack, preselectedTrack: normalizedItunesTrack })` so `Memoir.js` opens with the track's title, artist, artwork, and `previewUrl` pre-selected.
-
-
-
-
-
-
+* Standardize any `"My 13"` / `"Hit List"` references in `Your13.js` and `ViewChoicesScreen.js` to **`"Your13"`**.
 
 
 
 
 * **Acceptance Criteria:**
-* Tapping `⋯` $\rightarrow$ `+ Add to Your13` on a Collective track adds it to the user's next open `Your13` slot and shows a non-blocking toast.
-* Tapping `⋯` $\rightarrow$ `📖 Write Song Memoir` navigates to `Memoir.js` with that song already attached.
-
-
-
-
-
----
-
-## 3. Visual Layout & Token Contract for Track Rows
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│ [50x50 Art]  1. Blinding Lights                        [▲ Co-Sign (5)] │
-│              The Weeknd                                          [ ⋯ ] │
-│              “Wait for the synth drop at 0:58”                         │
-│              (Curated by @Sigma)  [Av1][Av2][Av3] +2                   │
-└────────────────────────────────────────────────────────────────────────┘
-
-```
-
-* **Surface & Borders:** Row card `backgroundColor: '#151821'`, `borderColor: '#242936'`, `borderWidth: 1`, `borderRadius: 12`, `padding: 12`, `marginBottom: 10`. Active Crate Radio row uses `borderColor: '#D4F458'`.
-* **Typography:**
-* Track Title: `15px` bold `#FFFFFF`
-* Artist Name: `13px` medium `#94A3B8`
-* Liner Note Pitch: `12px` italic `#E2E8F0` (`marginTop: 4`, `numberOfLines: 2`)
-* Curator Pill: `11px` semi-bold `#94A3B8` with `@username` in `#FF8C00` (`backgroundColor: '#1E2430'`, `borderRadius: 999`, `paddingHorizontal: 8, paddingVertical: 3`)
-
-
-* **Touch Targets:** `▲ Co-Sign` pill, `⋯` overflow trigger, and `Curated by @username` pill must all maintain `minHeight: 36` (with `hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}` to meet the `44×44pt` accessibility standard).
+* `grep -ri "tunehub" *.js app.json` returns `0` matches.
+* `grep -ri "music twin" *.js` returns `0` matches.
+* All 15 Jest test suites and `npx expo export --platform web` pass with `0` errors.
