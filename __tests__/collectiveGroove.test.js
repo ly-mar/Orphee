@@ -9,6 +9,7 @@ import {
   deriveUserDropQuota,
   validateCoSignAction,
   buildCrateRadioQueue,
+  resolveTrackSocialAttribution,
 } from '../utils/collectiveGrooveUtils';
 
 describe('collectiveGrooveUtils', () => {
@@ -204,6 +205,64 @@ describe('collectiveGrooveUtils', () => {
     it('handles empty or malformed tracks gracefully', () => {
       expect(buildCrateRadioQueue([])).toEqual([]);
       expect(buildCrateRadioQueue(null)).toEqual([]);
+    });
+  });
+
+  describe('resolveTrackSocialAttribution', () => {
+    it('falls back cleanly to @Community for legacy tracks without curatorUid', () => {
+      const legacyTrack = {
+        title: 'Legacy Song',
+        artist: 'Legacy Artist',
+      };
+      const attr = resolveTrackSocialAttribution(legacyTrack);
+      expect(attr.curatorUid).toBeNull();
+      expect(attr.curatorUsername).toBe('Community');
+      expect(attr.curatorHandle).toBe('@Community');
+      expect(attr.coSignerAvatars).toEqual([]);
+      expect(attr.overflowCount).toBe(0);
+    });
+
+    it('formats curator handle and extracts up to 3 co-signer mini avatars with overflow', () => {
+      const track = {
+        id: 'track_xyz',
+        title: 'Starboy',
+        artist: 'The Weeknd',
+        curatorUid: 'user_1',
+        curatorName: 'Alice',
+        voters: ['user_1', 'user_2', 'user_3', 'user_4', 'user_5'],
+        coSigners: [
+          { uid: 'user_1', username: 'Alice', avatar: 'https://example.com/alice.jpg' },
+          { uid: 'user_2', username: 'Bob', avatar: null },
+          { uid: 'user_3', username: 'Charlie', avatar: 'https://example.com/c.jpg' },
+          { uid: 'user_4', username: 'David', avatar: null },
+          { uid: 'user_5', username: 'Eve', avatar: null },
+        ],
+      };
+
+      const attr = resolveTrackSocialAttribution(track);
+      expect(attr.curatorUid).toBe('user_1');
+      expect(attr.curatorUsername).toBe('Alice');
+      expect(attr.curatorHandle).toBe('@Alice');
+      expect(attr.coSignerAvatars.length).toBe(3);
+      expect(attr.coSignerAvatars.map((a) => a.username)).toEqual(['Alice', 'Bob', 'Charlie']);
+      expect(attr.totalCoSigners).toBe(5);
+      expect(attr.overflowCount).toBe(2);
+    });
+
+    it('uses fresher username/avatar from usersByIdMap when available', () => {
+      const track = {
+        id: 'track_1',
+        curatorUid: 'user_1',
+        curatorName: 'OldName',
+        coSigners: [{ uid: 'user_1', username: 'OldName' }],
+      };
+      const userMap = {
+        user_1: { username: 'NewFreshName', photoURL: 'https://cdn.example.com/fresh.png' },
+      };
+      const attr = resolveTrackSocialAttribution(track, userMap);
+      expect(attr.curatorUsername).toBe('NewFreshName');
+      expect(attr.curatorHandle).toBe('@NewFreshName');
+      expect(attr.coSignerAvatars[0].avatar).toBe('https://cdn.example.com/fresh.png');
     });
   });
 });

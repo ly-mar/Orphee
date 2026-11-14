@@ -215,3 +215,64 @@ export function buildCrateRadioQueue(tracks = [], limit = CRATE_RADIO_LIMIT) {
     .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
     .slice(0, Math.max(1, limit));
 }
+
+/**
+ * Resolves social attribution for a track, including formatted curator handle and
+ * stacked mini-avatar profiles of listeners who co-signed it [WP-02].
+ */
+export function resolveTrackSocialAttribution(track = {}, usersByIdMap = {}) {
+  const normalized = normalizeCollectiveTrack(track);
+  const curatorUid = normalized.curatorUid;
+
+  let rawCuratorName = normalized.curatorName;
+  if (curatorUid && usersByIdMap && usersByIdMap[curatorUid]) {
+    const userProfile = usersByIdMap[curatorUid];
+    rawCuratorName = userProfile.username || userProfile.displayName || rawCuratorName;
+  }
+
+  const cleanName = String(rawCuratorName || '').replace(/^@+/, '').trim() || (curatorUid ? 'Listener' : 'Community');
+  const curatorHandle = `@${cleanName}`;
+
+  // Co-signers normalization
+  const seenUids = new Set();
+  const allCoSigners = [];
+
+  for (const cs of normalized.coSigners) {
+    if (!cs?.uid || seenUids.has(cs.uid)) continue;
+    seenUids.add(cs.uid);
+    const profile = usersByIdMap?.[cs.uid];
+    const username = profile?.username || profile?.displayName || cs.username || 'Listener';
+    const avatar = profile?.photoURL || profile?.avatar || cs.avatar || null;
+    allCoSigners.push({
+      uid: cs.uid,
+      username: String(username).replace(/^@+/, '').trim(),
+      avatar,
+    });
+  }
+
+  // Also include any voters not in coSigners
+  for (const vUid of normalized.voters) {
+    if (!vUid || seenUids.has(vUid)) continue;
+    seenUids.add(vUid);
+    const profile = usersByIdMap?.[vUid];
+    const username = profile?.username || profile?.displayName || (vUid === curatorUid ? cleanName : 'Listener');
+    const avatar = profile?.photoURL || profile?.avatar || null;
+    allCoSigners.push({
+      uid: vUid,
+      username: String(username).replace(/^@+/, '').trim(),
+      avatar,
+    });
+  }
+
+  const coSignerAvatars = allCoSigners.slice(0, 3);
+  const overflowCount = Math.max(0, allCoSigners.length - 3);
+
+  return {
+    curatorUid,
+    curatorUsername: cleanName,
+    curatorHandle,
+    coSignerAvatars,
+    totalCoSigners: allCoSigners.length,
+    overflowCount,
+  };
+}

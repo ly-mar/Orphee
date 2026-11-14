@@ -33,7 +33,9 @@ import {
   deriveUserDropQuota,
   validateCoSignAction,
   normalizeCollectiveTrack,
+  resolveTrackSocialAttribution,
 } from './utils/collectiveGrooveUtils';
+import { UserAvatar } from './utils/avatarUtils';
 
 const isUsableArtworkUrl = (url) =>
   typeof url === 'string' &&
@@ -271,6 +273,7 @@ function Pickerchoosers() {
               const showArtwork = isUsableArtworkUrl(rawArt) && !failedArtIds[songId];
               const highResUri = showArtwork ? rawArt.replace('100x100', '500x500') : null;
               const hasVoted = Boolean(votedIds[songId]);
+              const attribution = resolveTrackSocialAttribution(song);
 
               return (
                 <View key={songId || index} style={styles.songCard}>
@@ -307,6 +310,56 @@ function Pickerchoosers() {
                           “{song.linerNote}”
                         </Text>
                       )}
+
+                      {/* Social Attribution Row (WP-02) */}
+                      <View style={styles.attributionRow}>
+                        <TouchableOpacity
+                          style={styles.curatorPill}
+                          activeOpacity={attribution.curatorUid ? 0.75 : 1}
+                          onPress={() => {
+                            if (!attribution.curatorUid) return;
+                            if (attribution.curatorUid === userId) {
+                              navigation.navigate('ProfileScreen');
+                            } else {
+                              navigation.navigate('UserProfileScreen', {
+                                userId: attribution.curatorUid,
+                                username: attribution.curatorUsername,
+                              });
+                            }
+                          }}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Text style={styles.curatorLabelText}>
+                            Curated by <Text style={styles.curatorHandleText}>{attribution.curatorHandle}</Text>
+                          </Text>
+                        </TouchableOpacity>
+
+                        {attribution.coSignerAvatars.length > 0 && (
+                          <View style={styles.coSignersWrap}>
+                            {attribution.coSignerAvatars.map((signer, sIdx) => (
+                              <View
+                                key={signer.uid || sIdx}
+                                style={[
+                                  styles.miniAvatarSlot,
+                                  sIdx > 0 && styles.miniAvatarOverlap,
+                                ]}
+                              >
+                                <UserAvatar
+                                  avatarUrl={signer.avatar}
+                                  name={signer.username}
+                                  size={20}
+                                />
+                              </View>
+                            ))}
+                            {attribution.overflowCount > 0 && (
+                              <Text style={styles.overflowBadge}>
+                                +{attribution.overflowCount}
+                              </Text>
+                            )}
+                          </View>
+                        )}
+                      </View>
+
                       <Text style={styles.songScore}>
                         {Number(song.score) || 0} {Number(song.score) === 1 ? 'Co-Sign' : 'Co-Signs'}
                       </Text>
@@ -558,6 +611,50 @@ const styles = StyleSheet.create({
     color: '#E2E8F0',
     marginBottom: 4,
     lineHeight: 16,
+  },
+  attributionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginVertical: 4,
+  },
+  curatorPill: {
+    backgroundColor: '#1E2430',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#2A3142',
+  },
+  curatorLabelText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  curatorHandleText: {
+    color: '#FF8C00',
+    fontWeight: '700',
+  },
+  coSignersWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 2,
+  },
+  miniAvatarSlot: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: '#151821',
+  },
+  miniAvatarOverlap: {
+    marginLeft: -6,
+  },
+  overflowBadge: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '700',
+    marginLeft: 4,
   },
   songScore: {
     fontSize: 12,
