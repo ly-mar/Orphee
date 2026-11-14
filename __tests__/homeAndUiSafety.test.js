@@ -4,7 +4,11 @@ import {
   deriveVibeMatchPreview,
   deriveTodayMemoirStatus,
 } from '../utils/homeDashboardUtils';
-import { sanitizeNotificationPrefs } from '../utils/notificationPrefsUtils';
+import {
+  sanitizeNotificationPrefs,
+  NOTIF_FILTERS,
+  filterNotifications,
+} from '../utils/notificationPrefsUtils';
 import { PRIVACY_POLICY_TEXT, SECURITY_ROW_LABEL } from '../utils/legalUtils';
 import { getActiveTabName } from '../Taskbar';
 import {
@@ -205,6 +209,38 @@ describe('In-Memory Session Cache [WP-01]', () => {
     clearSessionCache();
     expect(getCachedUserProfile('u-1')).toBeNull();
     expect(getCachedThemes()).toBeNull();
+  });
+});
+
+describe('NotifPage Streamlined Filter & Canonical Social Alerts [WS-04]', () => {
+  test('defines canonical two filters All and Co-Signs & Social', () => {
+    expect(NOTIF_FILTERS).toEqual([
+      { id: 'all', label: 'All' },
+      { id: 'social', label: 'Co-Signs & Social' },
+    ]);
+  });
+
+  test('filters notifications to only co-sign, friend_request, chat, and vibe_match on social tab', () => {
+    const list = [
+      { id: '1', type: 'cosign', title: 'Co-sign alert' },
+      { id: '2', type: 'system', title: 'System update' },
+      { id: '3', type: 'friend_request', title: 'Connection request' },
+      { id: '4', type: 'marketing', title: 'New release' },
+      { id: '5', isPendingRequest: true, title: 'Pending match' },
+    ];
+
+    const all = filterNotifications(list, 'all');
+    expect(all).toHaveLength(5);
+
+    const social = filterNotifications(list, 'social');
+    expect(social).toHaveLength(3);
+    expect(social.map((s) => s.id)).toEqual(['1', '3', '5']);
+  });
+
+  test('handles null, undefined, or empty notification list safely', () => {
+    expect(filterNotifications(null, 'all')).toEqual([]);
+    expect(filterNotifications(undefined, 'social')).toEqual([]);
+    expect(filterNotifications([], 'social')).toEqual([]);
   });
 });
 

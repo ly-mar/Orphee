@@ -1,5 +1,27 @@
 // utils/notificationPrefsUtils.js
-// Coerces missing or non-boolean notification preferences safely [BUG-018]
+// Coerces missing or non-boolean notification preferences safely [BUG-018, WS-04]
+
+export const NOTIF_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'social', label: 'Co-Signs & Social' },
+];
+
+export function filterNotifications(notifications, activeFilter = 'all') {
+  if (!Array.isArray(notifications)) return [];
+  if (activeFilter === 'social') {
+    return notifications.filter((item) => {
+      const type = String(item?.type || '').toLowerCase();
+      return (
+        type === 'cosign' ||
+        type === 'friend_request' ||
+        type === 'chat' ||
+        type === 'vibe_match' ||
+        item?.isPendingRequest === true
+      );
+    });
+  }
+  return [...notifications];
+}
 
 export function sanitizeNotificationPrefs(raw = {}) {
   const safeObj = raw && typeof raw === 'object' ? raw : {};
