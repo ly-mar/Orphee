@@ -1,5 +1,5 @@
 // UserProfileScreen.js — updated playlist hydration and SongDetails navigation
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ import UserModerationModal from './UserModerationModal';
 import { openOrCreateDirectChat } from './utils/chatMessageUtils';
 import { normalizeYour13List } from './utils/playlistUtils';
 import { normalizeAndSortMediaList, UserAvatar } from './utils/avatarUtils';
+import { createAudioPreviewController } from './audioPreviewController';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -58,6 +59,58 @@ const UserProfileScreen = ({ route, navigation }) => {
   const [followers, setFollowers] = useState(0);
   const [selectedTab, setSelectedTab] = useState('13');
   const [userProfileImage, setUserProfileImage] = useState(null);
+  const [playingTrackId, setPlayingTrackId] = useState(null);
+  const audioControllerRef = useRef(null);
+
+  if (!audioControllerRef.current) {
+    audioControllerRef.current = createAudioPreviewController({
+      onStatusChange: (status) => {
+        if (status?.didJustFinish) {
+          setPlayingTrackId(null);
+        }
+      },
+      onError: (msg) => {
+        setPlayingTrackId(null);
+        Alert.alert('Preview Unavailable', msg || 'Could not play preview for this track.');
+      },
+    });
+  }
+
+  const stopAudio = useCallback(async () => {
+    await audioControllerRef.current?.stop?.();
+    setPlayingTrackId(null);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribeBlur = navigation?.addListener?.('blur', () => {
+      stopAudio();
+    });
+    return () => {
+      unsubscribeBlur?.();
+      audioControllerRef.current?.dispose?.();
+    };
+  }, [navigation, stopAudio]);
+
+  const handleTogglePreview = async (track) => {
+    const previewUrl = track?.previewUrl || track?.audioUrl;
+    const trackKey = track?.trackId || track?.id || track?.trackName || track?.title;
+
+    if (!previewUrl) {
+      Alert.alert('Preview Unavailable', 'No 30-second audio preview is available for this track.');
+      return;
+    }
+
+    if (playingTrackId === trackKey) {
+      await stopAudio();
+      return;
+    }
+
+    setPlayingTrackId(trackKey);
+    const started = await audioControllerRef.current.play(previewUrl);
+    if (!started) {
+      setPlayingTrackId(null);
+    }
+  };
 
   const fetchUserData = async () => {
     if (!userId) {
@@ -294,7 +347,7 @@ const UserProfileScreen = ({ route, navigation }) => {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollViewContent}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollViewContent}>
         <View style={styles.profileHeaderContainer}>
           <View style={styles.profileImageContainer}>
             {loading ? (
@@ -376,39 +429,56 @@ const UserProfileScreen = ({ route, navigation }) => {
         {selectedTab === '13' && (
           <View style={styles.playlistContainer}>
             {selectedSongs.length > 0 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: 14 }}
-              >
-                {selectedSongs.map((song, idx) => {
-                  const artworkUri = getHighResImage(song.artworkUrl100 || song.imageUrl);
-                  return (
+              selectedSongs.map((song, idx) => {
+                const trackKey = song.trackId || song.id || song.trackName || idx;
+                const isPlaying = playingTrackId === trackKey;
+                const artworkUri = getHighResImage(song.artworkUrl100 || song.imageUrl);
+                const rankNum = idx + 1;
+                return (
+                  <TouchableOpacity
+                    key={`${trackKey}-${idx}`}
+                    style={styles.trackRowCard}
+                    onPress={() => navigation.navigate('SongDetails', { song })}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.rankBadgeContainer}>
+                      <Text style={styles.rankBadgeText}>#{rankNum}</Text>
+                    </View>
+
+                    {artworkUri ? (
+                      <Image source={{ uri: artworkUri }} style={styles.trackArtwork} />
+                    ) : (
+                      <View style={[styles.trackArtwork, styles.artworkFallback]}>
+                        <FontAwesome5 name="music" size={18} color="#64748B" />
+                      </View>
+                    )}
+
+                    <View style={styles.trackInfoCol}>
+                      <Text style={styles.trackTitleText} numberOfLines={1}>
+                        {song.trackName || song.title || 'Untitled Track'}
+                      </Text>
+                      <Text style={styles.trackArtistText} numberOfLines={1}>
+                        {song.artistName || song.artist || 'Unknown Artist'}
+                      </Text>
+                    </View>
+
                     <TouchableOpacity
-                      key={`${song.trackId || idx}`}
-                      style={styles.songTile}
-                      onPress={() => navigation.navigate('SongDetails', { song })}
+                      style={[
+                        styles.trackPlayButton,
+                        isPlaying && styles.trackPlayButtonActive,
+                      ]}
+                      onPress={() => handleTogglePreview(song)}
+                      accessibilityLabel={isPlaying ? 'Stop preview' : 'Play 30s preview'}
                     >
-                      {artworkUri ? (
-                        <Image
-                          source={{ uri: artworkUri }}
-                          style={styles.playlistCover}
-                        />
-                      ) : (
-                        <View style={[styles.playlistCover, styles.artworkFallback]}>
-                          <FontAwesome5 name="music" size={24} color="#64748B" />
-                        </View>
-                      )}
-                      <Text style={styles.songTileTitle} numberOfLines={1}>
-                        {song.trackName || song.title}
-                      </Text>
-                      <Text style={styles.songTileArtist} numberOfLines={1}>
-                        {song.artistName || song.artist}
-                      </Text>
+                      <FontAwesome5
+                        name={isPlaying ? 'stop' : 'play'}
+                        size={11}
+                        color={isPlaying ? '#0B0C10' : '#FFFFFF'}
+                      />
                     </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                  </TouchableOpacity>
+                );
+              })
             ) : (
               <Text style={styles.noMusicText}>No Your13 tracks published yet.</Text>
             )}
@@ -518,7 +588,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
   },
   scrollViewContent: {
-    paddingBottom: 40,
+    paddingBottom: 96,
   },
   profileHeaderContainer: {
     alignItems: 'center',
@@ -603,37 +673,67 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   playlistContainer: {
-    marginVertical: 16,
-    alignItems: 'center',
+    marginVertical: 12,
+    paddingHorizontal: 16,
+    width: '100%',
   },
-  songTile: {
-    width: 120,
-    marginHorizontal: 6,
-    backgroundColor: '#161922',
-    padding: 8,
+  trackRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#151821',
     borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#242936',
+    borderColor: '#1E2430',
+  },
+  rankBadgeContainer: {
+    width: 32,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
   },
-  playlistCover: {
-    width: 100,
-    height: 100,
+  rankBadgeText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FF8C00',
+  },
+  trackArtwork: {
+    width: 48,
+    height: 48,
     borderRadius: 8,
-    marginBottom: 6,
+    marginRight: 12,
   },
-  songTileTitle: {
-    color: '#FFFFFF',
-    fontSize: 12,
+  trackInfoCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  trackTitleText: {
+    fontSize: 14,
     fontWeight: '700',
-    width: '100%',
-    textAlign: 'center',
+    color: '#FFFFFF',
+    marginBottom: 2,
   },
-  songTileArtist: {
+  trackArtistText: {
+    fontSize: 12,
     color: '#94A3B8',
-    fontSize: 11,
-    width: '100%',
-    textAlign: 'center',
+  },
+  trackPlayButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1E2430',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#2A3342',
+  },
+  trackPlayButtonActive: {
+    backgroundColor: '#D4F458',
+    borderColor: '#D4F458',
   },
   musicOfTheDayContainer: {
     alignItems: 'center',

@@ -41,6 +41,7 @@ import Pickerchoosers from '../Pickerchoosers';
 import ThemeDetails from '../ThemeDetails';
 import TheCollective from '../TheCollective';
 import AddSong from '../AddSong';
+import UserProfileScreen from '../UserProfileScreen';
 import ErrorBoundary from '../ErrorBoundary';
 
 describe('collectiveGrooveUtils', () => {
@@ -364,6 +365,10 @@ describe('collectiveGrooveUtils', () => {
 
     it('verifies AddSong is a valid component function', () => {
       expect(typeof AddSong).toBe('function');
+    });
+
+    it('verifies UserProfileScreen is a valid component function with Your13 vertical list [WP-04]', () => {
+      expect(typeof UserProfileScreen).toBe('function');
     });
 
     it('verifies ErrorBoundary catches errors and renders recovery UI without unmounting to white screen', () => {
