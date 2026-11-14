@@ -91,4 +91,64 @@ describe('AddSong & Memoir Screen Blur/Unmount Audio Cleanup [BUG-008]', () => {
   });
 });
 
+describe('Crate Radio Queue Playback [WP-03]', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCreateAsync.mockResolvedValue({
+      sound: {
+        unloadAsync: mockUnloadAsync,
+        stopAsync: mockStopAsync,
+        setOnPlaybackStatusUpdate: jest.fn(),
+      },
+    });
+  });
+
+  test('playQueue starts playing track #1 and emits progress updates', async () => {
+    const queue = [
+      { id: 't1', trackName: 'Song 1', previewUrl: 'https://audio.com/1.m4a' },
+      { id: 't2', trackName: 'Song 2', previewUrl: 'https://audio.com/2.m4a' },
+    ];
+    const onProgress = jest.fn();
+    const controller = createAudioPreviewController();
+    controller.onProgress(onProgress);
+
+    const started = await controller.playQueue(queue, 0);
+    expect(started).toBe(true);
+    expect(mockCreateAsync).toHaveBeenCalledTimes(1);
+    expect(onProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queueIndex: 0,
+        queueLength: 2,
+        activeTrackId: 't1',
+        isPlaying: true,
+      })
+    );
+
+    const state = controller.getQueueState();
+    expect(state.queueIndex).toBe(0);
+    expect(state.queueLength).toBe(2);
+    expect(state.activeTrack.id).toBe('t1');
+
+    await controller.dispose();
+  });
+
+  test('skipNext advances to next track and stopQueue halts playback', async () => {
+    const queue = [
+      { id: 't1', trackName: 'Song 1', previewUrl: 'https://audio.com/1.m4a' },
+      { id: 't2', trackName: 'Song 2', previewUrl: 'https://audio.com/2.m4a' },
+    ];
+    const controller = createAudioPreviewController();
+    await controller.playQueue(queue, 0);
+    expect(mockCreateAsync).toHaveBeenCalledTimes(1);
+
+    await controller.skipNext();
+    expect(mockCreateAsync).toHaveBeenCalledTimes(2);
+    expect(controller.getQueueState().queueIndex).toBe(1);
+
+    controller.stopQueue();
+    expect(controller.getQueueState().isPlaying).toBe(false);
+    await controller.dispose();
+  });
+});
+
 

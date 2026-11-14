@@ -28,14 +28,16 @@ import {
 import { createAsyncActionLock } from './utils/actionLockUtils';
 import { resolveThemeTitle } from './ThemeDetails';
 import { toast } from './crossPlatformAlert';
-import { normalizeTrack } from './services/musicApi';
+import { normalizeTrack, searchMusic } from './services/musicApi';
 import {
   deriveUserDropQuota,
   validateCoSignAction,
   normalizeCollectiveTrack,
   resolveTrackSocialAttribution,
+  buildCrateRadioQueue,
 } from './utils/collectiveGrooveUtils';
 import { UserAvatar } from './utils/avatarUtils';
+import { createAudioPreviewController } from './audioPreviewController';
 
 const isUsableArtworkUrl = (url) =>
   typeof url === 'string' &&
@@ -131,6 +133,49 @@ function Pickerchoosers() {
       loadSongs();
     }, [loadSongs])
   );
+
+  const [radioState, setRadioState] = useState({
+    isPlaying: false,
+    activeTrackId: null,
+    activeTrack: null,
+    queueIndex: 0,
+    queueLength: 0,
+    progressRatio: 0,
+  });
+
+  const audioControllerRef = useRef(null);
+  if (!audioControllerRef.current) {
+    audioControllerRef.current = createAudioPreviewController({
+      onError: (msg) => toast.show({ kind: 'info', message: msg }),
+    });
+  }
+
+  useEffect(() => {
+    const unsubProgress = audioControllerRef.current.onProgress((state) => {
+      setRadioState(state);
+    });
+    const unsubBlur = navigation?.addListener?.('blur', () => {
+      audioControllerRef.current?.stopQueue();
+    });
+    return () => {
+      unsubProgress?.();
+      unsubBlur?.();
+      audioControllerRef.current?.dispose();
+    };
+  }, [navigation]);
+
+  const toggleCrateRadio = async () => {
+    if (radioState.isPlaying) {
+      audioControllerRef.current.stopQueue();
+      return;
+    }
+    const queue = buildCrateRadioQueue(songs, 13);
+    if (queue.length === 0) {
+      toast.show({ kind: 'info', message: 'No tracks available to play in this crate.' });
+      return;
+    }
+    await audioControllerRef.current.playQueue(queue, 0, { searchMusicFn: searchMusic });
+  };
 
   const quota = deriveUserDropQuota(songs, userId);
 
@@ -252,6 +297,93 @@ function Pickerchoosers() {
         </View>
       </View>
 
+      {/* Crate Radio Header Trigger & Active Deck (WP-03) */}
+      <View style={styles.crateRadioControlsWrap}>
+        <TouchableOpacity
+          style={[styles.crateRadioBtn, radioState.isPlaying && styles.crateRadioBtnActive]}
+          onPress={toggleCrateRadio}
+          activeOpacity={0.85}
+        >
+          <Feather
+            name={radioState.isPlaying ? 'square' : 'play'}
+            size={15}
+            color={radioState.isPlaying ? '#FFFFFF' : '#000000'}
+          />
+          <Text
+            style={[
+              styles.crateRadioBtnText,
+              radioState.isPlaying && styles.crateRadioBtnTextActive,
+            ]}
+          >
+            {radioState.isPlaying ? '■ Stop Crate Radio' : '▶ Play Crate (Top 13)'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {radioState.isPlaying && radioState.activeTrack && (
+        <View style={styles.miniPlayerCard}>
+          <View style={styles.miniPlayerContent}>
+            <View style={styles.miniPlayerInfo}>
+              <Text style={styles.miniPlayerTag}>
+                CRATE RADIO • #{radioState.queueIndex + 1} OF {radioState.queueLength}
+              </Text>
+              <Text style={styles.miniPlayerTitle} numberOfLines={1}>
+                {radioState.activeTrack.trackName}
+              </Text>
+              <Text style={styles.miniPlayerArtist} numberOfLines={1}>
+                {radioState.activeTrack.artistName}
+              </Text>
+            </View>
+
+            <View style={styles.miniPlayerActions}>
+              <TouchableOpacity
+                onPress={() => addOrIncrementSong(radioState.activeTrack)}
+                style={[
+                  styles.miniCoSignBtn,
+                  votedIds[radioState.activeTrack.id] && styles.miniCoSignBtnVoted,
+                ]}
+                disabled={Boolean(votedIds[radioState.activeTrack.id])}
+              >
+                <Feather
+                  name={votedIds[radioState.activeTrack.id] ? 'check' : 'arrow-up'}
+                  size={12}
+                  color={votedIds[radioState.activeTrack.id] ? '#0B0C10' : '#000'}
+                />
+                <Text
+                  style={[
+                    styles.miniCoSignBtnText,
+                    votedIds[radioState.activeTrack.id] && styles.miniCoSignBtnTextVoted,
+                  ]}
+                >
+                  {votedIds[radioState.activeTrack.id]
+                    ? '✓ Co-Signed'
+                    : `▲ Co-Sign (${Number(radioState.activeTrack.score) || 0})`}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => audioControllerRef.current.skipNext({ searchMusicFn: searchMusic })}
+                style={styles.miniSkipBtn}
+                accessibilityLabel="Next preview track"
+              >
+                <Feather name="skip-forward" size={15} color="#FFFFFF" />
+                <Text style={styles.miniSkipText}>Next</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* 3px animated progress bar */}
+          <View style={styles.miniProgressBarTrack}>
+            <View
+              style={[
+                styles.miniProgressBarFill,
+                { width: `${Math.round(Math.min(1, Math.max(0, radioState.progressRatio)) * 100)}%` },
+              ]}
+            />
+          </View>
+        </View>
+      )}
+
       <Text style={styles.subHeader}>Music List • Ranked by Community Votes</Text>
 
       {loading ? (
@@ -274,9 +406,18 @@ function Pickerchoosers() {
               const highResUri = showArtwork ? rawArt.replace('100x100', '500x500') : null;
               const hasVoted = Boolean(votedIds[songId]);
               const attribution = resolveTrackSocialAttribution(song);
+              const isActiveTrack =
+                radioState.isPlaying &&
+                (radioState.activeTrackId === songId ||
+                  radioState.activeTrackId === song.id ||
+                  (radioState.activeTrack?.trackId != null &&
+                    String(radioState.activeTrack?.trackId) === String(song.trackId)));
 
               return (
-                <View key={songId || index} style={styles.songCard}>
+                <View
+                  key={songId || index}
+                  style={[styles.songCard, isActiveTrack && styles.songCardActiveRadio]}
+                >
                   <TouchableOpacity
                     style={styles.songRowMain}
                     activeOpacity={0.85}
@@ -499,6 +640,119 @@ const styles = StyleSheet.create({
     borderColor: '#242936',
     gap: 10,
   },
+  crateRadioControlsWrap: {
+    alignItems: 'center',
+    marginTop: 10,
+    marginHorizontal: 14,
+  },
+  crateRadioBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF8C00',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 22,
+    width: '100%',
+    gap: 8,
+  },
+  crateRadioBtnActive: {
+    backgroundColor: '#1E2430',
+    borderWidth: 1,
+    borderColor: '#D4F458',
+  },
+  crateRadioBtnText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  crateRadioBtnTextActive: {
+    color: '#D4F458',
+  },
+  miniPlayerCard: {
+    backgroundColor: '#151821',
+    borderColor: '#FF8C00',
+    borderWidth: 1,
+    borderRadius: 12,
+    marginHorizontal: 14,
+    marginTop: 10,
+    overflow: 'hidden',
+  },
+  miniPlayerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+  },
+  miniPlayerInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  miniPlayerTag: {
+    color: '#D4F458',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  miniPlayerTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  miniPlayerArtist: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 1,
+  },
+  miniPlayerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  miniCoSignBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF8C00',
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    gap: 4,
+  },
+  miniCoSignBtnVoted: {
+    backgroundColor: '#D4F458',
+  },
+  miniCoSignBtnText: {
+    color: '#000000',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  miniCoSignBtnTextVoted: {
+    color: '#0B0C10',
+  },
+  miniSkipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#202533',
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    gap: 4,
+  },
+  miniSkipText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  miniProgressBarTrack: {
+    height: 3,
+    backgroundColor: '#242936',
+    width: '100%',
+  },
+  miniProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#D4F458',
+  },
   quotaPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -566,6 +820,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#242936',
+  },
+  songCardActiveRadio: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#D4F458',
+    backgroundColor: '#181C26',
   },
   songRowMain: {
     flex: 1,
