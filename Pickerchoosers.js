@@ -184,6 +184,33 @@ function Pickerchoosers() {
     await audioControllerRef.current.playQueue(queue, 0, { searchMusicFn: searchMusic });
   };
 
+  const handleToggleSingleTrackPreview = async (song, songIndex) => {
+    const isCurrent =
+      radioState.isPlaying &&
+      (radioState.activeTrackId === song.id ||
+        (radioState.activeTrack?.trackId != null &&
+          String(radioState.activeTrack?.trackId) === String(song.trackId)) ||
+        (radioState.activeTrack?.trackName === (song.trackName || song.title) &&
+          radioState.activeTrack?.artistName === (song.artistName || song.artist)));
+    if (isCurrent) {
+      audioControllerRef.current.stopQueue();
+      return;
+    }
+    const queue = buildCrateRadioQueue(songs, 13);
+    const targetIdx = queue.findIndex(
+      (t) =>
+        t.id === song.id ||
+        (t.trackId && String(t.trackId) === String(song.trackId)) ||
+        (t.trackName === (song.trackName || song.title) &&
+          t.artistName === (song.artistName || song.artist))
+    );
+    if (targetIdx !== -1) {
+      await audioControllerRef.current.playQueue(queue, targetIdx, { searchMusicFn: searchMusic });
+    } else {
+      await audioControllerRef.current.playQueue([song], 0, { searchMusicFn: searchMusic });
+    }
+  };
+
   const handleAddToYour13 = async (song) => {
     if (!userId) {
       toast.show({ kind: 'info', message: 'Please sign in to add tracks to Your13.' });
@@ -383,7 +410,7 @@ function Pickerchoosers() {
               radioState.isPlaying && styles.crateRadioBtnTextActive,
             ]}
           >
-            {radioState.isPlaying ? '■ Stop Crate Radio' : '▶ Play Crate (Top 13)'}
+            {radioState.isPlaying ? 'Stop Crate Radio' : 'Play Crate (Top 13)'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -424,8 +451,8 @@ function Pickerchoosers() {
                   ]}
                 >
                   {votedIds[radioState.activeTrack.id]
-                    ? '✓ Co-Signed'
-                    : `▲ Co-Sign (${Number(radioState.activeTrack.score) || 0})`}
+                    ? `Co-Signed (${Number(radioState.activeTrack.score) || 0})`
+                    : `Co-Sign (${Number(radioState.activeTrack.score) || 0})`}
                 </Text>
               </TouchableOpacity>
 
@@ -486,145 +513,163 @@ function Pickerchoosers() {
                   key={songId || index}
                   style={[styles.songCard, isActiveTrack && styles.songCardActiveRadio]}
                 >
-                  <TouchableOpacity
-                    style={styles.songRowMain}
-                    activeOpacity={0.85}
-                    onPress={() =>
-                      navigation.navigate('SongDetails', { song: normalizeTrack(song) })
-                    }
-                  >
-                    {showArtwork && highResUri ? (
-                      <Image
-                        source={{ uri: highResUri }}
-                        style={styles.songCover}
-                        onError={() =>
-                          setFailedArtIds((prev) => ({ ...prev, [songId]: true }))
-                        }
-                      />
-                    ) : (
-                      <View style={styles.fallbackCover}>
-                        <FontAwesome5 name="music" size={20} color="#FF8C00" />
+                  {/* Top Row: Left (Rank + Art) + Center (Title + Artist + Liner Note) + Right (Preview + Overflow) */}
+                  <View style={styles.topRow}>
+                    <TouchableOpacity
+                      style={styles.topRowMain}
+                      activeOpacity={0.85}
+                      onPress={() =>
+                        navigation.navigate('SongDetails', { song: normalizeTrack(song) })
+                      }
+                    >
+                      <View style={styles.rankBadgeBox}>
+                        <Text style={styles.rankBadgeText}>#{index + 1}</Text>
                       </View>
-                    )}
 
-                    <View style={styles.songInfo}>
-                      <Text style={styles.songName} numberOfLines={1}>
-                        {song.trackName || song.title || 'Unknown Track'}
-                      </Text>
-                      <Text style={styles.artistName} numberOfLines={1}>
-                        by {song.artistName || song.artist || 'Unknown Artist'}
-                      </Text>
-                      {Boolean(song.linerNote) && (
-                        <Text style={styles.linerNoteText} numberOfLines={2}>
-                          “{song.linerNote}”
-                        </Text>
+                      {showArtwork && highResUri ? (
+                        <Image
+                          source={{ uri: highResUri }}
+                          style={styles.songCover}
+                          onError={() =>
+                            setFailedArtIds((prev) => ({ ...prev, [songId]: true }))
+                          }
+                        />
+                      ) : (
+                        <View style={styles.fallbackCover}>
+                          <FontAwesome5 name="music" size={18} color="#FF8C00" />
+                        </View>
                       )}
 
-                      {/* Social Attribution Row (WP-02) */}
-                      <View style={styles.attributionRow}>
-                        <TouchableOpacity
-                          style={styles.curatorPill}
-                          activeOpacity={attribution.curatorUid ? 0.75 : 1}
-                          onPress={() => {
-                            if (!attribution.curatorUid) return;
-                            if (attribution.curatorUid === userId) {
-                              navigation.navigate('ProfileScreen');
-                            } else {
-                              navigation.navigate('UserProfileScreen', {
-                                userId: attribution.curatorUid,
-                                username: attribution.curatorUsername,
-                              });
-                            }
-                          }}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <Text style={styles.curatorLabelText}>
-                            Curated by <Text style={styles.curatorHandleText}>{attribution.curatorHandle}</Text>
+                      <View style={styles.songInfo}>
+                        <Text style={styles.songName} numberOfLines={1}>
+                          {song.trackName || song.title || 'Unknown Track'}
+                        </Text>
+                        <Text style={styles.artistName} numberOfLines={1}>
+                          by {song.artistName || song.artist || 'Unknown Artist'}
+                        </Text>
+                        {Boolean(song.linerNote) && (
+                          <Text style={styles.linerNoteText} numberOfLines={2}>
+                            “{song.linerNote}”
                           </Text>
-                        </TouchableOpacity>
-
-                        {attribution.coSignerAvatars.length > 0 && (
-                          <View style={styles.coSignersWrap}>
-                            {attribution.coSignerAvatars.map((signer, sIdx) => (
-                              <View
-                                key={signer.uid || sIdx}
-                                style={[
-                                  styles.miniAvatarSlot,
-                                  sIdx > 0 && styles.miniAvatarOverlap,
-                                ]}
-                              >
-                                <UserAvatar
-                                  imageUrl={signer.avatar || signer.avatarUrl}
-                                  name={signer.username || 'Listener'}
-                                  size={20}
-                                />
-                              </View>
-                            ))}
-                            {attribution.overflowCount > 0 && (
-                              <Text style={styles.overflowBadge}>
-                                +{attribution.overflowCount}
-                              </Text>
-                            )}
-                          </View>
                         )}
                       </View>
-
-                      <Text style={styles.songScore}>
-                        {Number(song.score) || 0} {Number(song.score) === 1 ? 'Co-Sign' : 'Co-Signs'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <View style={styles.trackCardActionsRow}>
-                    {hasVoted ? (
-                      <TouchableOpacity
-                        style={[styles.voteButton, styles.voteButtonVoted]}
-                        disabled={true}
-                        activeOpacity={1}
-                        accessibilityLabel={`Co-signed (${song.score})`}
-                      >
-                        <Feather name="check" size={13} color="#0B0C10" />
-                        <Text style={styles.voteButtonVotedLabel}>
-                          ✓ Co-Signed ({Number(song.score) || 0})
-                        </Text>
-                      </TouchableOpacity>
-                    ) : quota.coSignsRemaining === 0 ? (
-                      <TouchableOpacity
-                        onPress={() =>
-                          toast.show({ kind: 'info', message: 'All 3 Co-Signs used for this drop.' })
-                        }
-                        style={[styles.voteButton, styles.voteButtonDisabled]}
-                        activeOpacity={0.8}
-                        accessibilityLabel="All 3 Co-Signs used"
-                      >
-                        <Feather name="arrow-up" size={13} color="#64748B" />
-                        <Text style={styles.voteButtonDisabledLabel}>
-                          ▲ Co-Sign ({Number(song.score) || 0})
-                        </Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        onPress={() => addOrIncrementSong(song)}
-                        style={styles.voteButton}
-                        activeOpacity={0.8}
-                        accessibilityLabel={`Co-sign ${song.trackName}`}
-                      >
-                        <Feather name="arrow-up" size={13} color="#000000" />
-                        <Text style={styles.voteButtonLabel}>
-                          ▲ Co-Sign ({Number(song.score) || 0})
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {/* Quick-Action Overflow Button (WP-04) */}
-                    <TouchableOpacity
-                      style={styles.overflowBtn}
-                      onPress={() => setActiveMenuSong(song)}
-                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      accessibilityLabel={`Options for ${song.trackName}`}
-                    >
-                      <Feather name="more-horizontal" size={18} color="#94A3B8" />
                     </TouchableOpacity>
+
+                    <View style={styles.topRowActions}>
+                      <TouchableOpacity
+                        style={[styles.previewCircleBtn, isActiveTrack && styles.previewCircleBtnActive]}
+                        onPress={() => handleToggleSingleTrackPreview(song, index)}
+                        accessibilityLabel={isActiveTrack ? `Stop previewing ${song.trackName}` : `Preview ${song.trackName}`}
+                      >
+                        <FontAwesome5
+                          name={isActiveTrack ? 'stop' : 'play'}
+                          size={11}
+                          color={isActiveTrack ? '#0B0C10' : '#FFFFFF'}
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.overflowBtn}
+                        onPress={() => setActiveMenuSong(song)}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        accessibilityLabel={`Options for ${song.trackName}`}
+                      >
+                        <Feather name="more-horizontal" size={18} color="#94A3B8" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Bottom Footer Row: Left (Curator pill + avatars) + Right (Co-Sign pill) */}
+                  <View style={styles.cardFooterRow}>
+                    <View style={styles.cardFooterLeft}>
+                      <TouchableOpacity
+                        style={styles.curatorPill}
+                        activeOpacity={attribution.curatorUid ? 0.75 : 1}
+                        onPress={() => {
+                          if (!attribution.curatorUid) return;
+                          if (attribution.curatorUid === userId) {
+                            navigation.navigate('ProfileScreen');
+                          } else {
+                            navigation.navigate('UserProfileScreen', {
+                              userId: attribution.curatorUid,
+                              username: attribution.curatorUsername,
+                            });
+                          }
+                        }}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={styles.curatorLabelText} numberOfLines={1}>
+                          Curated by <Text style={styles.curatorHandleText}>{attribution.curatorHandle}</Text>
+                        </Text>
+                      </TouchableOpacity>
+
+                      {attribution.coSignerAvatars.length > 0 && (
+                        <View style={styles.coSignersWrap}>
+                          {attribution.coSignerAvatars.map((signer, sIdx) => (
+                            <View
+                              key={signer.uid || sIdx}
+                              style={[
+                                styles.miniAvatarSlot,
+                                sIdx > 0 && styles.miniAvatarOverlap,
+                              ]}
+                            >
+                              <UserAvatar
+                                imageUrl={signer.avatar || signer.avatarUrl}
+                                name={signer.username || 'Listener'}
+                                size={20}
+                              />
+                            </View>
+                          ))}
+                          {attribution.overflowCount > 0 && (
+                            <Text style={styles.overflowBadge}>
+                              +{attribution.overflowCount}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={styles.cardFooterRight}>
+                      {hasVoted ? (
+                        <TouchableOpacity
+                          style={[styles.votePill, styles.votePillVoted]}
+                          disabled={true}
+                          activeOpacity={1}
+                          accessibilityLabel={`Co-signed (${song.score})`}
+                        >
+                          <Feather name="check" size={12} color="#0B0C10" />
+                          <Text style={styles.votePillVotedLabel}>
+                            Co-Signed ({Number(song.score) || 0})
+                          </Text>
+                        </TouchableOpacity>
+                      ) : quota.coSignsRemaining === 0 ? (
+                        <TouchableOpacity
+                          onPress={() =>
+                            toast.show({ kind: 'info', message: 'All 3 Co-Signs used for this drop.' })
+                          }
+                          style={[styles.votePill, styles.votePillDisabled]}
+                          activeOpacity={0.8}
+                          accessibilityLabel="All 3 Co-Signs used"
+                        >
+                          <Feather name="arrow-up" size={12} color="#64748B" />
+                          <Text style={styles.votePillDisabledLabel}>
+                            Co-Sign ({Number(song.score) || 0})
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          onPress={() => addOrIncrementSong(song)}
+                          style={styles.votePill}
+                          activeOpacity={0.8}
+                          accessibilityLabel={`Co-sign ${song.trackName}`}
+                        >
+                          <Feather name="arrow-up" size={12} color="#000000" />
+                          <Text style={styles.votePillLabel}>
+                            Co-Sign ({Number(song.score) || 0})
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 </View>
               );
@@ -639,7 +684,7 @@ function Pickerchoosers() {
             >
               <Feather name="check-circle" size={18} color="#64748B" />
               <Text style={[styles.addSongButtonLabel, styles.addSongButtonDisabledLabel]}>
-                ✓ Nomination Used (1/1)
+                Nomination Used (1/1)
               </Text>
             </TouchableOpacity>
           ) : (
@@ -649,7 +694,7 @@ function Pickerchoosers() {
               activeOpacity={0.85}
             >
               <Feather name="plus-circle" size={18} color="#000000" />
-              <Text style={styles.addSongButtonLabel}>+ Nominate a Track</Text>
+              <Text style={styles.addSongButtonLabel}>Nominate a Track</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -949,8 +994,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   songCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     backgroundColor: '#151821',
     padding: 12,
     borderRadius: 14,
@@ -963,22 +1007,39 @@ const styles = StyleSheet.create({
     borderLeftColor: '#D4F458',
     backgroundColor: '#181C26',
   },
-  songRowMain: {
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+  },
+  topRowMain: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 10,
+    minWidth: 0,
+    marginRight: 8,
+  },
+  rankBadgeBox: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  rankBadgeText: {
+    color: '#FF8C00',
+    fontSize: 14,
+    fontWeight: '800',
   },
   songCover: {
-    width: 54,
-    height: 54,
+    width: 52,
+    height: 52,
     borderRadius: 10,
     marginRight: 12,
     backgroundColor: '#202534',
   },
   fallbackCover: {
-    width: 54,
-    height: 54,
+    width: 52,
+    height: 52,
     borderRadius: 10,
     marginRight: 12,
     backgroundColor: '#1C202E',
@@ -989,31 +1050,71 @@ const styles = StyleSheet.create({
   },
   songInfo: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 6,
   },
   songName: {
     fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 3,
+    marginBottom: 2,
   },
   artistName: {
     fontSize: 13,
     color: '#94A3B8',
-    marginBottom: 3,
+    marginBottom: 2,
   },
   linerNoteText: {
     fontSize: 12,
     fontStyle: 'italic',
     color: '#E2E8F0',
-    marginBottom: 4,
     lineHeight: 16,
   },
-  attributionRow: {
+  topRowActions: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 6,
-    marginVertical: 4,
+  },
+  previewCircleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1E2430',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#2A3342',
+  },
+  previewCircleBtnActive: {
+    backgroundColor: '#D4F458',
+    borderColor: '#D4F458',
+  },
+  overflowBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A1E29',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#262D3D',
+  },
+  cardFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1E2430',
+  },
+  cardFooterLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+    marginRight: 8,
   },
   curatorPill: {
     backgroundColor: '#1E2430',
@@ -1022,6 +1123,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderWidth: 1,
     borderColor: '#2A3142',
+    maxWidth: '70%',
   },
   curatorLabelText: {
     color: '#94A3B8',
@@ -1035,7 +1137,7 @@ const styles = StyleSheet.create({
   coSignersWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 2,
+    marginLeft: 6,
   },
   miniAvatarSlot: {
     borderRadius: 10,
@@ -1052,37 +1154,41 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 4,
   },
-  songScore: {
-    fontSize: 12,
-    color: '#FF8C00',
-    fontWeight: '700',
+  cardFooterRight: {
+    flexShrink: 0,
   },
-  voteButton: {
+  votePill: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FF8C00',
-    minWidth: 64,
-    minHeight: 44,
     paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
     gap: 4,
   },
-  trackCardActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  votePillVoted: {
+    backgroundColor: '#D4F458',
   },
-  overflowBtn: {
-    minWidth: 38,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+  votePillDisabled: {
     backgroundColor: '#1A1E29',
-    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#262D3D',
-    paddingHorizontal: 8,
+    borderColor: '#2A3142',
+  },
+  votePillLabel: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  votePillVotedLabel: {
+    color: '#0B0C10',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  votePillDisabledLabel: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '700',
   },
   modalBackdrop: {
     flex: 1,
