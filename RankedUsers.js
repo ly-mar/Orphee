@@ -23,7 +23,13 @@ import {
   computeSimilarityMatrix,
 } from './utils/algorithmUtils';
 import { UserAvatar } from './utils/avatarUtils';
-import { getCachedRankedUsers, setCachedRankedUsers } from './utils/sessionCache';
+import {
+  getCachedRankedUsers,
+  setCachedRankedUsers,
+  getCachedUserProfile,
+  getCachedUserPlaylist,
+} from './utils/sessionCache';
+import { canAccessVibeFeatures } from './utils/playlistUtils';
 
 export { sanitizeCompatibilityScore };
 
@@ -82,6 +88,7 @@ function RankedUsers({ route, navigation }) {
   const [friendStatuses, setFriendStatuses] = useState({});
   const [currentUsername, setCurrentUsername] = useState(null);
   const [hydrating, setHydrating] = useState(true);
+  const [isGated, setIsGated] = useState(false);
   const [animationValue] = useState(new Animated.Value(0));
 
   useEffect(() => {
@@ -90,8 +97,42 @@ function RankedUsers({ route, navigation }) {
     const hydrateLeaderboard = async () => {
       setHydrating(true);
 
-      let listToHydrate = rankedUsers;
       const currentUid = userId || auth.currentUser?.uid;
+
+      if (currentUid && currentUid !== 'current_user') {
+        let userSongs = route?.params?.selectedSongs || [];
+        let isConfirmed = route?.params?.isConfirmed;
+
+        if (!userSongs || userSongs.length === 0 || isConfirmed === undefined) {
+          const cachedPl = getCachedUserPlaylist(currentUid);
+          const cachedPr = getCachedUserProfile(currentUid);
+          userSongs = userSongs.length > 0 ? userSongs : (cachedPl?.songs || cachedPr?.your13 || []);
+          isConfirmed = isConfirmed !== undefined
+            ? isConfirmed
+            : Boolean(cachedPl?.your13Confirmed || cachedPr?.your13Confirmed || cachedPl?.isLocked);
+
+          if (!userSongs || userSongs.length === 0 || !isConfirmed) {
+            try {
+              const uDoc = await getDoc(doc(db, 'users', currentUid));
+              if (uDoc.exists()) {
+                const uData = uDoc.data();
+                userSongs = userSongs.length > 0 ? userSongs : (uData.your13 || uData.songs || []);
+                isConfirmed = Boolean(uData.your13Confirmed || uData.isLocked);
+              }
+            } catch (_) {}
+          }
+        }
+
+        if (!canAccessVibeFeatures(userSongs, Boolean(isConfirmed))) {
+          if (isMounted) {
+            setIsGated(true);
+            setHydrating(false);
+          }
+          return;
+        }
+      }
+
+      let listToHydrate = rankedUsers;
 
       if (!Array.isArray(listToHydrate) || listToHydrate.length === 0) {
         if (currentUid) {
@@ -347,6 +388,25 @@ function RankedUsers({ route, navigation }) {
   };
 
   const renderRanking = () => {
+    if (isGated) {
+      return (
+        <View style={styles.gateBox}>
+          <FontAwesome5 name="lock" size={32} color="#FF8C00" style={{ marginBottom: 14 }} />
+          <Text style={styles.gateTitle}>Your13 Incomplete</Text>
+          <Text style={styles.gateSub}>
+            Curate and confirm all 13 signature tracks in Your13 to unlock community Vibe Check and compatibility rankings.
+          </Text>
+          <TouchableOpacity
+            style={styles.gateCtaBtn}
+            onPress={() => navigation.navigate('Your13')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.gateCtaText}>Complete & Confirm Your13</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     if (hydrating) {
       return (
         <View style={styles.emptyBox}>
@@ -499,12 +559,14 @@ function RankedUsers({ route, navigation }) {
 
       <View style={styles.contentArea}>{renderRanking()}</View>
 
-      <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.primaryGraphCta} onPress={navigateToGraph}>
-          <FontAwesome5 name="satellite-dish" size={16} color="#000000" style={{ marginRight: 8 }} />
-          <Text style={styles.primaryGraphCtaText}>Launch Affinity Radar</Text>
-        </TouchableOpacity>
-      </View>
+      {!isGated && (
+        <View style={styles.bottomBar}>
+          <TouchableOpacity style={styles.primaryGraphCta} onPress={navigateToGraph}>
+            <FontAwesome5 name="satellite-dish" size={16} color="#000000" style={{ marginRight: 8 }} />
+            <Text style={styles.primaryGraphCtaText}>Launch Affinity Radar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -739,6 +801,51 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 19,
     maxWidth: 320,
+  },
+  gateBox: {
+    marginHorizontal: 20,
+    marginTop: 40,
+    padding: 28,
+    borderRadius: 16,
+    backgroundColor: '#151821',
+    borderWidth: 1,
+    borderColor: '#242936',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+  },
+  gateTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  gateSub: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+    maxWidth: 300,
+  },
+  gateCtaBtn: {
+    backgroundColor: '#FF8C00',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 260,
+  },
+  gateCtaText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });
 

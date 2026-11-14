@@ -1,6 +1,11 @@
 // utils/homeDashboardUtils.js
 // Guards HomeScreen dashboard state derivation against null user docs and sparse playlists [BUG-017]
-import { computeLockStateForPlaylist, normalizeYour13List, REQUIRED_YOUR13_COUNT } from './playlistUtils';
+import {
+  computeLockStateForPlaylist,
+  normalizeYour13List,
+  REQUIRED_YOUR13_COUNT,
+  canAccessVibeFeatures,
+} from './playlistUtils';
 import { getCachedUserProfile } from './sessionCache';
 
 export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
@@ -36,6 +41,14 @@ export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
     ''
   ).trim();
 
+  const isConfirmed = Boolean(
+    playlistDoc?.your13Confirmed === true ||
+    userDoc?.your13Confirmed === true ||
+    userDoc?.isLocked === true ||
+    playlistDoc?.isLocked === true
+  );
+  const canAccessVibe = canAccessVibeFeatures(your13, isConfirmed);
+
   return {
     isAuthenticated: true,
     isHydrated,
@@ -43,6 +56,8 @@ export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
     displayName: rawName || 'Listener',
     your13,
     isLocked: lockState.isLocked,
+    your13Confirmed: isConfirmed,
+    canAccessVibe,
     progressCount: lockState.count,
     requiredCount: lockState.required,
   };

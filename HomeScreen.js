@@ -18,6 +18,8 @@ import {
   deriveHomeDashboardState,
   deriveVibeMatchPreview,
 } from './utils/homeDashboardUtils';
+import { canAccessVibeFeatures } from './utils/playlistUtils';
+import { useLock } from './LockContext';
 import Taskbar from './Taskbar';
 import backgroundImage from './assets/bri-tucker-AJD3XJlvBZ8-unsplash.jpg';
 import {
@@ -160,8 +162,15 @@ function HomeScreen({ navigation }) {
     });
   }, [currentUser?.uid]);
 
+  const { isLocked: lockContextLocked, your13Confirmed: lockContextConfirmed } = useLock();
   const effectiveProfileDoc = userProfileDoc ?? (safetyHydrate ? {} : null);
   const dashboardState = deriveHomeDashboardState(currentUser, effectiveProfileDoc, userPlaylistDoc);
+  const isYour13ConfirmedState = Boolean(
+    dashboardState.your13Confirmed ||
+    lockContextConfirmed ||
+    (dashboardState.your13.length === 13 && lockContextLocked)
+  );
+  const hasVibeAccess = canAccessVibeFeatures(dashboardState.your13, isYour13ConfirmedState);
   const activeRankedUsers =
     cachedRankedUsers.length > 0
       ? cachedRankedUsers
@@ -242,49 +251,81 @@ function HomeScreen({ navigation }) {
                     Discover listeners on your exact musical wavelength by comparing your 13 signature tracks across the community.
                   </Text>
 
-                  <View style={styles.previewPill}>
-                    <Feather name="zap" size={13} color="#FF8C00" style={{ marginRight: 6 }} />
-                    <Text style={styles.previewPillText} numberOfLines={1}>
-                      {vibePreviewText}
+                  <View style={[styles.previewPill, !hasVibeAccess && styles.previewPillLocked]}>
+                    <Feather
+                      name={hasVibeAccess ? 'zap' : 'lock'}
+                      size={13}
+                      color={hasVibeAccess ? '#FF8C00' : '#94A3B8'}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text
+                      style={[styles.previewPillText, !hasVibeAccess && styles.previewPillTextLocked]}
+                      numberOfLines={1}
+                    >
+                      {hasVibeAccess
+                        ? vibePreviewText
+                        : `Confirm 13/13 tracks in Your13 to unlock • ${dashboardState.progressCount}/13 selected (Unconfirmed)`}
                     </Text>
                   </View>
 
                   <View style={styles.dualButtonRow}>
                     <Button
                       mode="contained"
-                      style={[styles.actionBtn, styles.primaryActionBtn]}
-                      buttonColor="#FF8C00"
-                      textColor="#000000"
+                      style={[
+                        styles.actionBtn,
+                        styles.primaryActionBtn,
+                        !hasVibeAccess && styles.gatedActionBtn,
+                      ]}
+                      buttonColor={hasVibeAccess ? '#FF8C00' : '#1E2430'}
+                      textColor={hasVibeAccess ? '#000000' : '#94A3B8'}
                       labelStyle={styles.actionBtnLabel}
-                      onPress={() =>
+                      onPress={() => {
+                        if (!hasVibeAccess) {
+                          navigation.navigate('Your13');
+                          return;
+                        }
                         navigation.navigate('RankedUsers', {
                           rankedUsers: activeRankedUsers,
                           selectedSongs: dashboardState.your13,
                           userId: currentUser?.uid,
+                          isConfirmed: hasVibeAccess,
                           fromScreen: 'Home',
-                        })
-                      }
-                      icon="lightning-bolt"
+                        });
+                      }}
+                      icon={hasVibeAccess ? 'lightning-bolt' : 'lock'}
                     >
                       Run Vibe Check
                     </Button>
 
                     <Button
                       mode="contained"
-                      style={[styles.actionBtn, styles.secondaryActionBtn]}
+                      style={[
+                        styles.actionBtn,
+                        styles.secondaryActionBtn,
+                        !hasVibeAccess && styles.gatedActionBtn,
+                      ]}
                       buttonColor="#1E2430"
-                      textColor="#FFFFFF"
+                      textColor={hasVibeAccess ? '#FFFFFF' : '#94A3B8'}
                       labelStyle={styles.actionBtnLabel}
-                      onPress={() =>
+                      onPress={() => {
+                        if (!hasVibeAccess) {
+                          navigation.navigate('Your13');
+                          return;
+                        }
                         navigation.navigate('UserGraph', {
                           rankedUsers: activeRankedUsers,
                           userId: currentUser?.uid,
+                          isConfirmed: hasVibeAccess,
                           fromScreen: 'Home',
-                        })
-                      }
+                        });
+                      }}
                       icon={() => (
-                        <View style={styles.iridescentStarBadge}>
-                          <Ionicons name="sparkles" size={12} color="#FFFFFF" />
+                        <View style={[styles.iridescentStarBadge, !hasVibeAccess && styles.gatedStarBadge]}>
+                          <Ionicons
+                            name={hasVibeAccess ? 'sparkles' : 'lock-closed'}
+                            size={12}
+                            color="#FFFFFF"
+                          />
                         </View>
                       )}
                     >
@@ -553,6 +594,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 2,
+  },
+  previewPillLocked: {
+    backgroundColor: '#161922',
+    borderColor: '#2D3748',
+  },
+  previewPillTextLocked: {
+    color: '#94A3B8',
+  },
+  gatedActionBtn: {
+    borderColor: '#242936',
+  },
+  gatedStarBadge: {
+    backgroundColor: '#374151',
   },
 });
 

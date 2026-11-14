@@ -72,6 +72,28 @@ describe('HomeScreen Dashboard State Resilience [BUG-017]', () => {
     expect(state.isLocked).toBe(false);
   });
 
+  test('gates canAccessVibe until all 13 tracks are confirmed [WS-02]', () => {
+    const twelveSongs = Array.from({ length: 12 }, (_, idx) => ({ trackId: `t-${idx}`, trackName: `Track ${idx}` }));
+    const unconfirmedState = deriveHomeDashboardState(
+      { uid: 'u-1' },
+      { your13: twelveSongs, your13Confirmed: false }
+    );
+    expect(unconfirmedState.canAccessVibe).toBe(false);
+
+    const thirteenSongs = Array.from({ length: 13 }, (_, idx) => ({ trackId: `t-${idx}`, trackName: `Track ${idx}` }));
+    const draftThirteenState = deriveHomeDashboardState(
+      { uid: 'u-1' },
+      { your13: thirteenSongs, your13Confirmed: false }
+    );
+    expect(draftThirteenState.canAccessVibe).toBe(false);
+
+    const confirmedState = deriveHomeDashboardState(
+      { uid: 'u-1' },
+      { your13: thirteenSongs, your13Confirmed: true }
+    );
+    expect(confirmedState.canAccessVibe).toBe(true);
+  });
+
   test('derives vibe match preview text for ranked users', () => {
     expect(deriveVibeMatchPreview([])).toBe('Compare your signature 13 tracks to find your top Vibe Match');
     const preview = deriveVibeMatchPreview([{ username: 'Alpha', similarityScore: 0.92 }]);

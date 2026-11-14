@@ -36,6 +36,8 @@ import {
 } from './utils/algorithmUtils';
 import { openOrCreateDirectChat } from './utils/chatMessageUtils';
 import { computeRadialPosition, sanitizeGraphLayout } from './utils/graphLayoutUtils';
+import { canAccessVibeFeatures } from './utils/playlistUtils';
+import { getCachedUserProfile, getCachedUserPlaylist } from './utils/sessionCache';
 
 export { computeRadialPosition, sanitizeGraphLayout };
 
@@ -58,11 +60,49 @@ function UserGraph({ route, navigation }) {
   const [loadingRankedUsers, setLoadingRankedUsers] = useState(
     () => !route?.params?.rankedUsers || route.params.rankedUsers.length === 0
   );
+  const [isGated, setIsGated] = useState(false);
   const routeUsernames = route?.params?.usernames || {};
   const userId = route?.params?.userId || auth.currentUser?.uid || 'current_user';
 
   // Automatically fetch cached rankings or compute from playlists if navigated directly
   useEffect(() => {
+    let isMounted = true;
+    const currentUid = userId !== 'current_user' ? userId : auth.currentUser?.uid;
+
+    if (currentUid) {
+      let userSongs = route?.params?.selectedSongs || [];
+      let isConfirmed = route?.params?.isConfirmed;
+
+      if (!userSongs || userSongs.length === 0 || isConfirmed === undefined) {
+        const cachedPl = getCachedUserPlaylist(currentUid);
+        const cachedPr = getCachedUserProfile(currentUid);
+        userSongs = userSongs.length > 0 ? userSongs : (cachedPl?.songs || cachedPr?.your13 || []);
+        isConfirmed = isConfirmed !== undefined
+          ? isConfirmed
+          : Boolean(cachedPl?.your13Confirmed || cachedPr?.your13Confirmed || cachedPl?.isLocked);
+
+        if (!userSongs || userSongs.length === 0 || !isConfirmed) {
+          getDoc(doc(db, 'users', currentUid)).then((uDoc) => {
+            if (isMounted && uDoc.exists()) {
+              const uData = uDoc.data();
+              const songs = userSongs.length > 0 ? userSongs : (uData.your13 || uData.songs || []);
+              const conf = Boolean(uData.your13Confirmed || uData.isLocked);
+              if (!canAccessVibeFeatures(songs, conf)) {
+                setIsGated(true);
+                setLoadingRankedUsers(false);
+              }
+            }
+          }).catch(() => {});
+        }
+      }
+
+      if (!canAccessVibeFeatures(userSongs, Boolean(isConfirmed))) {
+        setIsGated(true);
+        setLoadingRankedUsers(false);
+        return;
+      }
+    }
+
     if (route?.params?.rankedUsers && route.params.rankedUsers.length > 0) {
       setRankedUsers(route.params.rankedUsers);
       setLoadingRankedUsers(false);
@@ -478,6 +518,42 @@ function UserGraph({ route, navigation }) {
       Alert.alert('Unable to Start Chat', 'Please try again in a moment.');
     }
   };
+
+  if (isGated) {
+    return (
+      <SafeAreaView style={styles.emptyContainer}>
+        <View style={styles.topHeader}>
+          <TouchableOpacity
+            onPress={() => {
+              if (navigation.canGoBack()) navigation.goBack();
+              else navigation.navigate('Home');
+            }}
+            style={styles.topBackBtn}
+          >
+            <FontAwesome5 name="arrow-left" size={14} color="#FFFFFF" />
+            <Text style={styles.topBackText}>Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.topHeaderTitle}>Affinity Radar</Text>
+          <View style={{ width: 60 }} />
+        </View>
+
+        <View style={styles.gateBox}>
+          <FontAwesome5 name="satellite-dish" size={36} color="#FF8C00" style={{ marginBottom: 16 }} />
+          <Text style={styles.gateTitle}>Affinity Radar Locked</Text>
+          <Text style={styles.gateSub}>
+            Curate and confirm all 13 signature tracks in Your13 to map your music soulmates and unlock the radar graph.
+          </Text>
+          <TouchableOpacity
+            style={styles.gateCtaBtn}
+            onPress={() => navigation.navigate('Your13')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.gateCtaText}>Complete & Confirm Your13</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loadingRankedUsers || (rankedUsers.length > 0 && isHydratingNodes)) {
     return (
@@ -1390,6 +1466,45 @@ const styles = StyleSheet.create({
   emptyBtn: {
     borderRadius: 10,
     paddingHorizontal: 8,
+  },
+  gateBox: {
+    padding: 32,
+    borderRadius: 16,
+    backgroundColor: '#151821',
+    borderWidth: 1,
+    borderColor: '#242936',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 360,
+  },
+  gateTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  gateSub: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  gateCtaBtn: {
+    backgroundColor: '#FF8C00',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  gateCtaText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });
 
