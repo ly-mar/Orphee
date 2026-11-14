@@ -138,7 +138,7 @@ const FriendsScreen = ({ route }) => {
       return {
         icon: 'user-friends',
         title: 'No Friends Yet',
-        subtitle: 'Connect with kindred listeners from Music Twins and Affinity Radar.',
+        subtitle: 'Connect with kindred listeners from Vibe Check and Affinity Radar.',
       };
     }
     if (activeTab === 'following') {

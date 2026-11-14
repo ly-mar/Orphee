@@ -360,7 +360,7 @@ function Your13({ navigation }) {
 
   const rankUsers = async () => {
     if (selectedChoices.length === 0) {
-      Alert.alert('Info', 'Please select at least 1 track before finding music twins.');
+      Alert.alert('Info', 'Please select at least 1 track before running Vibe Check.');
       return;
     }
 
@@ -779,7 +779,7 @@ function Your13({ navigation }) {
             color="#FFF"
             style={{ marginRight: 6 }}
           />
-          <Text style={styles.actionRankText}>Find Music Twins</Text>
+          <Text style={styles.actionRankText}>Run Vibe Check</Text>
         </TouchableOpacity>
       </View>
 
@@ -1123,7 +1123,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    marginBottom: 94, // Lifts Save & Find Music Twins cleanly above floating Taskbar dock
+    marginBottom: 94, // Lifts Save & Run Vibe Check cleanly above floating Taskbar dock
     backgroundColor: '#12141A',
     borderTopWidth: 1,
     borderTopColor: '#20242E',

@@ -479,7 +479,7 @@ function Pickerchoosers() {
         </View>
       )}
 
-      <Text style={styles.subHeader}>Music List • Ranked by Community Votes</Text>
+      <Text style={styles.subHeader}>Music List • Ranked by Community Co-Signs</Text>
 
       {loading ? (
         <View style={styles.centerBox}>

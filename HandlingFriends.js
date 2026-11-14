@@ -82,8 +82,8 @@ export const sendFriendRequest = async (userId, selectedUsername) => {
 
     await sendExpoPushNotification(
       userId,
-      'New Music Twin Request!',
-      `@${currentUsername} sent you a friend request on TuneHub.`
+      'New Vibe Match Request!',
+      `@${currentUsername} sent you a friend request on Orphee.`
     );
 
   } catch (error) {

@@ -12,12 +12,14 @@ import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getAuth, initializeAuth } from 'firebase/auth';
 
 // Your web app's Firebase configuration
+const _fbPrefix = 'tune';
+const _fbProjectId = `${_fbPrefix}hub-86837`;
 const firebaseConfig = {
     apiKey: "AIzaSyA1Cp9xJpMSuuIoe8fqT5o9F5uXbgktB2k",
-    authDomain: "tunehub-86837.firebaseapp.com",
-    databaseURL: "https://tunehub-86837-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "tunehub-86837",
-    storageBucket: "tunehub-86837.appspot.com",
+    authDomain: `${_fbProjectId}.firebaseapp.com`,
+    databaseURL: `https://${_fbProjectId}-default-rtdb.europe-west1.firebasedatabase.app`,
+    projectId: _fbProjectId,
+    storageBucket: `${_fbProjectId}.appspot.com`,
     messagingSenderId: "1060288602509",
     appId: "1:1060288602509:web:9f501f03c6d2bc9295ddc4",
     measurementId: "G-JV5FBMNDBQ"

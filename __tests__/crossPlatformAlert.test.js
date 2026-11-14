@@ -141,7 +141,7 @@ describe('Cross-Platform Web Alert Bridge [BUG-006]', () => {
       const { toast } = require('../crossPlatformAlert');
       toast.show({ kind: 'success', message: 'Friend request sent to Sam.' });
 
-      const toastEl = global.document.getElementById('tunehub-toast-banner');
+      const toastEl = global.document.getElementById('orphee-toast-banner');
       expect(toastEl).not.toBeNull();
       expect(toastEl.getAttribute('role')).toBe('status');
       expect(toastEl.getAttribute('aria-live')).toBe('polite');
@@ -159,23 +159,23 @@ describe('Cross-Platform Web Alert Bridge [BUG-006]', () => {
         destructive: true,
       });
 
-      const backdrop = global.document.getElementById('tunehub-confirm-dialog-backdrop');
+      const backdrop = global.document.getElementById('orphee-confirm-dialog-backdrop');
       expect(backdrop).not.toBeNull();
       expect(backdrop.getAttribute('role')).toBe('dialog');
 
-      const confirmBtn = global.document.getElementById('tunehub-confirm-accept-btn');
+      const confirmBtn = global.document.getElementById('orphee-confirm-accept-btn');
       expect(confirmBtn).not.toBeNull();
       expect(confirmBtn.textContent).toBe('Delete');
       expect(confirmBtn.textContent).not.toBe('OK');
 
-      const cancelBtn = global.document.getElementById('tunehub-confirm-cancel-btn');
+      const cancelBtn = global.document.getElementById('orphee-confirm-cancel-btn');
       expect(cancelBtn.textContent).toBe('Cancel');
 
       // Click confirm
       confirmBtn.click();
       const result = await promise;
       expect(result).toBe(true);
-      expect(global.document.getElementById('tunehub-confirm-dialog-backdrop')).toBeNull();
+      expect(global.document.getElementById('orphee-confirm-dialog-backdrop')).toBeNull();
     });
 
     test('confirm resolves false when cancel button is clicked', async () => {
@@ -187,11 +187,11 @@ describe('Cross-Platform Web Alert Bridge [BUG-006]', () => {
         cancelLabel: 'Cancel',
       });
 
-      const cancelBtn = global.document.getElementById('tunehub-confirm-cancel-btn');
+      const cancelBtn = global.document.getElementById('orphee-confirm-cancel-btn');
       cancelBtn.click();
       const result = await promise;
       expect(result).toBe(false);
-      expect(global.document.getElementById('tunehub-confirm-dialog-backdrop')).toBeNull();
+      expect(global.document.getElementById('orphee-confirm-dialog-backdrop')).toBeNull();
     });
   });
 });

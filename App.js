@@ -154,7 +154,7 @@ export default function App() {
   if (initializing) {
     return (
       <View style={styles.splashContainer}>
-        <Text style={styles.splashBrand}>TuneHub</Text>
+        <Text style={styles.splashBrand}>Orphee</Text>
         <Text style={styles.splashSub}>Restoring your musical universe...</Text>
         <ActivityIndicator size="large" color="#FF8C00" style={{ marginTop: 18 }} />
       </View>
@@ -185,7 +185,7 @@ export default function App() {
                 <Stack.Screen name="Registration" component={RegistrationStack} />
                 <Stack.Screen name="Profile" component={ProfileScreen} />
                 <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
-                <Stack.Screen name="RankedUsers" component={RankedUsers} />
+                <Stack.Screen name="RankedUsers" component={RankedUsers} options={{ title: 'Vibe Check' }} />
                 <Stack.Screen name="UserGraph" component={UserGraph} />
                 <Stack.Screen name="FriendsScreen" component={FriendsScreen} />
                 <Stack.Screen name="ViewChoicesScreen" component={ViewChoicesScreen} />

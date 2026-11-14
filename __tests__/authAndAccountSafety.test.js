@@ -44,11 +44,11 @@ describe('Account Deletion & Security Settings Safety [BUG-012]', () => {
 describe('Auth Input Normalization & Error Mapping [BUG-013]', () => {
   test('trims trailing keyboard spaces and lowercases email', () => {
     const creds = sanitizeAuthCredentials({
-      email: '  Listener@TuneHub.com  ',
+      email: '  Listener@Orphee.com  ',
       password: 'secretPassword123',
       username: '  SonicTwin_1  ',
     });
-    expect(creds.email).toBe('listener@tunehub.com');
+    expect(creds.email).toBe('listener@orphee.com');
     expect(creds.username).toBe('SonicTwin_1');
   });
 

@@ -4,13 +4,13 @@ import { Alert, Platform } from 'react-native';
 export const toast = {
   show({ kind = 'info', message, durationMs = 3000 }) {
     if (typeof document !== 'undefined' && document.body && typeof document.createElement === 'function') {
-      const existing = document.getElementById('tunehub-toast-banner');
+      const existing = document.getElementById('orphee-toast-banner');
       if (existing && existing.parentNode) {
         existing.parentNode.removeChild(existing);
       }
 
       const el = document.createElement('div');
-      el.id = 'tunehub-toast-banner';
+      el.id = 'orphee-toast-banner';
       el.setAttribute('role', 'status');
       el.setAttribute('aria-live', 'polite');
 
@@ -67,13 +67,13 @@ export function confirm({
 }) {
   return new Promise((resolve) => {
     if (typeof document !== 'undefined' && document.body && typeof document.createElement === 'function') {
-      const existing = document.getElementById('tunehub-confirm-dialog-backdrop');
+      const existing = document.getElementById('orphee-confirm-dialog-backdrop');
       if (existing && existing.parentNode) {
         existing.parentNode.removeChild(existing);
       }
 
       const backdrop = document.createElement('div');
-      backdrop.id = 'tunehub-confirm-dialog-backdrop';
+      backdrop.id = 'orphee-confirm-dialog-backdrop';
       backdrop.setAttribute('role', 'dialog');
       backdrop.setAttribute('aria-modal', 'true');
       Object.assign(backdrop.style, {
@@ -93,7 +93,7 @@ export function confirm({
       });
 
       const card = document.createElement('div');
-      card.id = 'tunehub-confirm-dialog-card';
+      card.id = 'orphee-confirm-dialog-card';
       Object.assign(card.style, {
         backgroundColor: '#151821',
         border: '1px solid #242936',
@@ -106,7 +106,7 @@ export function confirm({
       });
 
       const titleEl = document.createElement('div');
-      titleEl.id = 'tunehub-confirm-title';
+      titleEl.id = 'orphee-confirm-title';
       titleEl.textContent = title || 'Confirm Action';
       Object.assign(titleEl.style, {
         color: '#FFFFFF',
@@ -116,7 +116,7 @@ export function confirm({
       });
 
       const bodyEl = document.createElement('div');
-      bodyEl.id = 'tunehub-confirm-body';
+      bodyEl.id = 'orphee-confirm-body';
       bodyEl.textContent = message || '';
       Object.assign(bodyEl.style, {
         color: '#94A3B8',
@@ -133,7 +133,7 @@ export function confirm({
       });
 
       const cancelBtn = document.createElement('button');
-      cancelBtn.id = 'tunehub-confirm-cancel-btn';
+      cancelBtn.id = 'orphee-confirm-cancel-btn';
       cancelBtn.textContent = cancelLabel;
       cancelBtn.type = 'button';
       Object.assign(cancelBtn.style, {
@@ -150,7 +150,7 @@ export function confirm({
       });
 
       const confirmBtn = document.createElement('button');
-      confirmBtn.id = 'tunehub-confirm-accept-btn';
+      confirmBtn.id = 'orphee-confirm-accept-btn';
       confirmBtn.textContent = confirmLabel;
       confirmBtn.type = 'button';
       Object.assign(confirmBtn.style, {

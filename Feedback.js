@@ -232,7 +232,7 @@ const RateUsScreen = ({ navigation }) => {
         return;
       }
       setSubmitted(true);
-      Alert.alert('Thank You!', `Thanks for rating TuneHub ${rating}/5 stars.`);
+      Alert.alert('Thank You!', `Thanks for rating Orphee ${rating}/5 stars.`);
       navigation.goBack();
     };
 

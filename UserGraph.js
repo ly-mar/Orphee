@@ -533,7 +533,7 @@ function UserGraph({ route, navigation }) {
         </View>
 
         <View style={styles.peerCountBadge}>
-          <Text style={styles.peerCountText}>{plottedNodes.length} Twins</Text>
+          <Text style={styles.peerCountText}>{plottedNodes.length} Vibe Matches</Text>
         </View>
       </View>
 
@@ -780,7 +780,7 @@ function UserGraph({ route, navigation }) {
         <View style={styles.legendOverlay}>
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: '#FFD700' }]} />
-            <Text style={styles.legendText}>#1 Twin</Text>
+            <Text style={styles.legendText}>#1 Vibe Match</Text>
           </View>
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
@@ -796,7 +796,7 @@ function UserGraph({ route, navigation }) {
       {/* Interactive Peer Selector Tray (Ensures 100% accessible node selection on all screens) */}
       <View style={styles.selectorTray}>
         <Text style={styles.selectorTitle}>
-          Tap a Music Twin on the radar or below to inspect shared DNA:
+          Tap a Vibe Match on the radar or below to inspect shared DNA:
         </Text>
         <ScrollView
           horizontal
@@ -861,7 +861,7 @@ function UserGraph({ route, navigation }) {
                             { color: selectedNode.ringColor },
                           ]}
                         >
-                          Rank #{selectedNode.rank} Music Twin
+                          Rank #{selectedNode.rank} Vibe Match
                         </Text>
                       </View>
                       <Text style={styles.sheetUsername}>

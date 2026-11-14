@@ -56,7 +56,7 @@ const WelcomeScreen = () => {
           <Image source={require('./assets/logo.png')} style={styles.logo} />
         </View>
 
-        <Text style={styles.brandTitle}>TuneHub</Text>
+        <Text style={styles.brandTitle}>Orphee</Text>
         <Text style={styles.tagline}>
           Shape Your Very Own Community with Music
         </Text>
@@ -99,7 +99,7 @@ const WelcomeScreen = () => {
 
         {/* Legal Consent Footer */}
         <Text style={styles.legalConsentText}>
-          By continuing, you agree to TuneHub&apos;s{' '}
+          By continuing, you agree to Orphee&apos;s{' '}
           <Text
             style={styles.legalLink}
             onPress={() => setLegalModalType('terms')}

@@ -172,7 +172,7 @@ const MainChatScreen = ({ navigation }) => {
         <ActivityIndicator size="large" color="#FF8C00" style={{ marginTop: 40 }} />
       ) : chats.length === 0 ? (
         <Text style={styles.noChatsText}>
-          No active conversations yet. Visit a Music Twin's profile to say hello!
+          No active conversations yet. Visit a Vibe Match's profile to say hello!
         </Text>
       ) : (
         <FlatList

@@ -52,7 +52,7 @@ const SignUpScreen = ({ navigation }) => {
 
       <View style={styles.card}>
         <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.subtitle}>Join TuneHub to connect through music</Text>
+        <Text style={styles.subtitle}>Join Orphee to connect through music</Text>
 
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>USERNAME</Text>

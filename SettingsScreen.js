@@ -44,7 +44,7 @@ const SettingsScreen = ({ route, navigation }) => {
   const handleLogout = () => {
     confirm({
       title: 'Log Out',
-      message: 'Are you sure you want to log out of your TuneHub account?',
+      message: 'Are you sure you want to log out of your Orphee account?',
       confirmLabel: 'Log Out',
       cancelLabel: 'Cancel',
       destructive: false,
@@ -170,7 +170,7 @@ const SettingsScreen = ({ route, navigation }) => {
 
           <List.Item
             title="App Version"
-            description="v1.0.0 (Build 1) • com.tunehub.chorus"
+            description="v1.0.0 (Build 1) • com.orphee.chorus"
             titleStyle={styles.listItemText}
             descriptionStyle={styles.listItemSubtext}
             left={() => <List.Icon icon="information-outline" color="#94A3B8" />}
@@ -202,8 +202,8 @@ const SettingsScreen = ({ route, navigation }) => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {legalModalType === 'privacy'
-                  ? 'TuneHub Privacy Policy'
-                  : 'TuneHub Terms of Service'}
+                  ? 'Orphee Privacy Policy'
+                  : 'Orphee Terms of Service'}
               </Text>
               <TouchableOpacity
                 onPress={() => setLegalModalType(null)}

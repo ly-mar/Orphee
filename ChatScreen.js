@@ -115,7 +115,7 @@ const ChatScreen = ({ route, navigation }) => {
       if (otherUserId) {
         sendExpoPushNotification(
           otherUserId,
-          `New message from @${auth.currentUser?.displayName || 'Music Twin'}`,
+          `New message from @${auth.currentUser?.displayName || 'Vibe Match'}`,
           textToSend,
           { chatId }
         );

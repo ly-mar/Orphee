@@ -198,7 +198,7 @@ const SecuritySettings = ({ navigation }) => {
         <View style={styles.dangerZone}>
           <Text style={styles.dangerZoneTitle}>Danger Zone</Text>
           <Text style={styles.dangerZoneSub}>
-            Permanently erase your TuneHub account, Your13 playlist, memoirs, and personal data.
+            Permanently erase your Orphee account, Your13 playlist, memoirs, and personal data.
           </Text>
           <TouchableOpacity
             style={styles.deleteAccountBtn}

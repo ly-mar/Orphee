@@ -845,7 +845,7 @@ function ProfileScreen({ navigation }) {
                   activeTab === 'memoirs' && styles.categoryPillTextActive,
                 ]}
               >
-                Memoirs ({memoirs.length})
+                Song Memoirs ({memoirs.length})
               </Text>
             </TouchableOpacity>
 
@@ -862,7 +862,7 @@ function ProfileScreen({ navigation }) {
                   activeTab === 'sonicTwin' && styles.categoryPillTextActive,
                 ]}
               >
-                Music Twins
+                Vibe Check
               </Text>
             </TouchableOpacity>
 
@@ -979,7 +979,7 @@ function ProfileScreen({ navigation }) {
                   onPress={() => setActiveTab('memoirs')}
                 >
                   <Text style={styles.statNumber}>{memoirs.length}</Text>
-                  <Text style={styles.statLabel}>Memoirs</Text>
+                  <Text style={styles.statLabel}>Song Memoirs</Text>
                 </TouchableOpacity>
               </View>
 
@@ -1121,13 +1121,13 @@ function ProfileScreen({ navigation }) {
                 <Text style={styles.lavenderCardTitle} numberOfLines={1}>
                   {featuredTrack
                     ? featuredTrack.trackName || featuredTrack.title
-                    : 'Build Your 13 Hit List'}
+                    : 'Build Your13'}
                 </Text>
                 <Text style={styles.lavenderCardSub} numberOfLines={2}>
                   {featuredTrack
                     ? `${featuredTrack.artistName || featuredTrack.artist} • #1 in ${userInfo?.username || 'Sigma'
                     }'s 13`
-                    : 'Curate your 13 signature tracks to unlock Music Twins matching.'}
+                    : 'Curate your 13 signature tracks to unlock Vibe Check matching.'}
                 </Text>
 
                 <View style={styles.lavenderActionsRow}>
@@ -1198,7 +1198,7 @@ function ProfileScreen({ navigation }) {
             {/* Top Curated Tracks List (Design 3: image_74650d.jpg) */}
             <View style={styles.listHeaderRow}>
               <Text style={styles.sectionHeading}>
-                Your 13 Hit List ({filteredSongs.length})
+                Your13 ({filteredSongs.length})
               </Text>
               <TouchableOpacity onPress={() => navigation.navigate('Your13')}>
                 <Text style={styles.seeAllLinkText}>Edit 13</Text>
@@ -1208,7 +1208,7 @@ function ProfileScreen({ navigation }) {
             {filteredSongs.length === 0 ? (
               <View style={styles.emptyCardBox}>
                 <Ionicons name="musical-notes-outline" size={38} color="#D4F458" />
-                <Text style={styles.emptyCardTitle}>No songs in your Hit List</Text>
+                <Text style={styles.emptyCardTitle}>No songs in your Your13</Text>
                 <Text style={styles.emptyCardSubtitle}>
                   Select up to 13 tracks that define your musical identity.
                 </Text>
@@ -1406,7 +1406,7 @@ function ProfileScreen({ navigation }) {
               <View style={styles.lavenderLeftCol}>
                 <Text style={styles.lavenderCardTitle}>Affinity Radar</Text>
                 <Text style={styles.lavenderCardSub}>
-                  Compare your 13 tracks against the TuneHub community graph.
+                  Compare your 13 tracks against the Orphee community graph.
                 </Text>
                 <View style={styles.lavenderActionsRow}>
                   <View style={styles.deepPurplePlayBtn}>

@@ -390,7 +390,7 @@ const RankedMusicList = ({ navigation }) => {
           </View>
           <View style={styles.curatorsBadge}>
             <Text style={styles.curatorsBadgeText}>
-              In {topSong.count} {topSong.count === 1 ? 'Hit List' : 'Hit Lists'}
+              In {topSong.count} {topSong.count === 1 ? 'Your13' : 'Your13s'}
             </Text>
           </View>
         </View>

@@ -413,14 +413,17 @@ const UserProfileScreen = ({ route, navigation }) => {
 
         {/* Tabs Section */}
         <View style={styles.tabContainer}>
-          {['13', 'Memoir'].map((tab) => (
+          {[
+            { id: '13', label: `Your13 (${selectedSongs.length})` },
+            { id: 'Memoir', label: 'Song Memoirs' },
+          ].map((tab) => (
             <TouchableOpacity
-              key={tab}
-              style={[styles.tabItem, selectedTab === tab && styles.activeTabItem]}
-              onPress={() => setSelectedTab(tab)}
+              key={tab.id}
+              style={[styles.tabItem, selectedTab === tab.id && styles.activeTabItem]}
+              onPress={() => setSelectedTab(tab.id)}
             >
-              <Text style={[styles.tabText, selectedTab === tab && styles.activeTabText]}>
-                {tab === '13' ? `Your13 (${selectedSongs.length})` : tab}
+              <Text style={[styles.tabText, selectedTab === tab.id && styles.activeTabText]}>
+                {tab.label}
               </Text>
             </TouchableOpacity>
           ))}

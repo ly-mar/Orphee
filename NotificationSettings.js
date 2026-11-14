@@ -164,7 +164,7 @@ const NotificationSettings = ({ navigation }) => {
           <View style={styles.item}>
             <View style={styles.itemInfo}>
               <Text style={styles.itemText}>Friend Requests</Text>
-              <Text style={styles.itemSubtext}>When a music twin sends you a connection invite</Text>
+              <Text style={styles.itemSubtext}>When a kindred listener sends you a connection invite</Text>
             </View>
             <Switch
               value={prefs.friendRequests}

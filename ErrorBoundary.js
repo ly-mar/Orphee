@@ -34,7 +34,7 @@ export class ErrorBoundary extends React.Component {
           <View style={errorBoundaryStyles.card}>
             <Text style={errorBoundaryStyles.title}>Something went wrong</Text>
             <Text style={errorBoundaryStyles.subtitle}>
-              TuneHub encountered a render issue. You can reload the app to recover.
+              Orphee encountered a render issue. You can reload the app to recover.
             </Text>
             <View style={errorBoundaryStyles.errorBox}>
               <Text style={errorBoundaryStyles.errorText} numberOfLines={6}>

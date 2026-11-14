@@ -248,7 +248,7 @@ function RankedUsers({ route, navigation }) {
       return (
         <View style={styles.emptyBox}>
           <ActivityIndicator size="large" color="#FF8C00" style={{ marginBottom: 12 }} />
-          <Text style={styles.emptyTitle}>Matching Music Twins...</Text>
+          <Text style={styles.emptyTitle}>Matching Vibe Checks...</Text>
           <Text style={styles.emptySub}>Resolving community profiles & compatibility scores.</Text>
         </View>
       );
@@ -320,7 +320,7 @@ function RankedUsers({ route, navigation }) {
                   </Text>
                   <Text style={styles.subRoleText} numberOfLines={1}>
                     {pct >= 75
-                      ? 'Top Music Twin'
+                      ? 'Top Vibe Match'
                       : pct >= 45
                         ? 'High Vibe Match'
                         : pct >= 20
@@ -368,7 +368,7 @@ function RankedUsers({ route, navigation }) {
         </TouchableOpacity>
 
         <View style={styles.headerTitleWrap}>
-          <Text style={styles.title}>Music Twins</Text>
+          <Text style={styles.title}>Vibe Check</Text>
           <Text style={styles.subtitle}>Ranked by Music Compatibility</Text>
         </View>
 

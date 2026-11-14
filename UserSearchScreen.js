@@ -146,7 +146,7 @@ const UserSearchScreen = () => {
 
   const renderItem = ({ item }) => {
     const handleText = item.username || 'listener';
-    const primaryLabel = item.displayName || item.username || 'TuneHub Listener';
+    const primaryLabel = item.displayName || item.username || 'Orphee Listener';
 
     return (
       <TouchableOpacity
@@ -235,7 +235,7 @@ const UserSearchScreen = () => {
               <Text style={styles.stateTitle}>
                 {hasSearched
                   ? `No listeners found matching "${queryText.trim()}"`
-                  : 'Discover Music Twins & Friends'}
+                  : 'Discover Vibe Matches & Friends'}
               </Text>
               <Text style={styles.stateSub}>
                 {hasSearched
