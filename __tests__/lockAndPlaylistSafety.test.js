@@ -6,6 +6,8 @@ import {
   attemptRemoveTrack,
   calculateRemainingLockSeconds,
   Your13LockManager,
+  isYour13Confirmed,
+  canAccessVibeFeatures,
 } from '../utils/playlistUtils';
 
 describe('LockContext & Your13 Playlist Normalization [BUG-015]', () => {
@@ -120,6 +122,34 @@ describe('LockContext & Your13 Playlist Normalization [BUG-015]', () => {
       expect(allowedResult.modified).toBe(true);
       expect(allowedResult.playlist).toHaveLength(12);
       expect(allowedResult.playlist.find((t) => t.trackId === 'song-0')).toBeUndefined();
+    });
+  });
+
+  describe('Workstream 1: Explicit Confirmation & Vibe Feature Gating', () => {
+    test('isYour13Confirmed returns true ONLY when 13 tracks exist and your13Confirmed or isLocked is true', () => {
+      expect(isYour13Confirmed(null)).toBe(false);
+      expect(isYour13Confirmed({})).toBe(false);
+
+      const twelveSongs = Array.from({ length: 12 }, (_, i) => ({ trackId: `t-${i}`, trackName: `Song ${i}` }));
+      expect(isYour13Confirmed({ songs: twelveSongs, your13Confirmed: true })).toBe(false);
+
+      const thirteenSongs = Array.from({ length: 13 }, (_, i) => ({ trackId: `t-${i}`, trackName: `Song ${i}` }));
+      // 13 songs without confirmation or lock returns false
+      expect(isYour13Confirmed({ songs: thirteenSongs, your13Confirmed: false, isLocked: false })).toBe(false);
+
+      // 13 songs with your13Confirmed: true returns true
+      expect(isYour13Confirmed({ songs: thirteenSongs, your13Confirmed: true })).toBe(true);
+
+      // 13 songs with isLocked: true returns true
+      expect(isYour13Confirmed({ songs: thirteenSongs, isLocked: true })).toBe(true);
+    });
+
+    test('canAccessVibeFeatures returns true ONLY when 13 valid tracks and confirmed are present', () => {
+      const thirteenSongs = Array.from({ length: 13 }, (_, i) => ({ trackId: `t-${i}`, trackName: `Song ${i}` }));
+      expect(canAccessVibeFeatures(thirteenSongs, false)).toBe(false);
+      expect(canAccessVibeFeatures(thirteenSongs.slice(0, 12), true)).toBe(false);
+      expect(canAccessVibeFeatures(thirteenSongs, true)).toBe(true);
+      expect(canAccessVibeFeatures(null, true)).toBe(false);
     });
   });
 });

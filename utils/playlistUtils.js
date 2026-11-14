@@ -132,6 +132,28 @@ export function computeLockStateForPlaylist(rawList, uid, requiredCount = REQUIR
   };
 }
 
+export function isYour13Confirmed(userDocOrState) {
+  if (!userDocOrState || typeof userDocOrState !== 'object') return false;
+  const rawList =
+    userDocOrState.songs ??
+    userDocOrState.your13 ??
+    userDocOrState.playlist ??
+    (Array.isArray(userDocOrState) ? userDocOrState : []);
+  const songs = normalizeYour13List(rawList);
+  if (songs.length !== REQUIRED_YOUR13_COUNT) return false;
+
+  return Boolean(
+    userDocOrState.your13Confirmed === true ||
+    userDocOrState.isLocked === true ||
+    userDocOrState.confirmed === true
+  );
+}
+
+export function canAccessVibeFeatures(songs, isConfirmed) {
+  const list = normalizeYour13List(songs);
+  return Boolean(list.length === REQUIRED_YOUR13_COUNT && isConfirmed === true);
+}
+
 /**
  * Safely appends a candidate track to a user's Your13 playlist [WP-04].
  * Validates lock state, duplicates, and 13-track cap.

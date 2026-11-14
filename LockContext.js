@@ -4,13 +4,21 @@ import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from './firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
-import { calculateRemainingLockSeconds } from './utils/playlistUtils';
+import {
+  calculateRemainingLockSeconds,
+  isYour13Confirmed,
+  canAccessVibeFeatures,
+} from './utils/playlistUtils';
+
+export { isYour13Confirmed, canAccessVibeFeatures };
 
 export const LockContext = createContext({
   isLocked: false,
   lockTime: 0,
   lockChoices: async () => { },
   setLockTime: () => { },
+  your13Confirmed: false,
+  setYour13Confirmed: () => { },
 });
 
 export const useLock = () => useContext(LockContext) || {};
@@ -21,11 +29,13 @@ const LOCK_TIMESTAMP_KEY = 'lockTimestamp';
 export const LockProvider = ({ children }) => {
   const [isLocked, setIsLocked] = useState(false);
   const [lockTime, setLockTime] = useState(0);
+  const [your13Confirmed, setYour13Confirmed] = useState(false);
   const appState = useRef(AppState.currentState);
 
   const clearStoredLock = useCallback(async () => {
     try {
       await AsyncStorage.multiRemove([LOCK_TIME_KEY, LOCK_TIMESTAMP_KEY]);
+      setYour13Confirmed(false);
     } catch (error) {
       console.error('Error clearing lock state:', error);
     }
@@ -36,6 +46,7 @@ export const LockProvider = ({ children }) => {
       if (!user) {
         setIsLocked(false);
         setLockTime(0);
+        setYour13Confirmed(false);
         clearStoredLock();
       }
     });
@@ -57,14 +68,17 @@ export const LockProvider = ({ children }) => {
         if (remainingSec > 0) {
           setLockTime(remainingSec);
           setIsLocked(true);
+          setYour13Confirmed(true);
         } else {
           setLockTime(0);
           setIsLocked(false);
+          setYour13Confirmed(false);
           await clearStoredLock();
         }
       } else {
         setLockTime(0);
         setIsLocked(false);
+        setYour13Confirmed(false);
       }
     } catch (error) {
       console.error('Error loading lock state:', error);
@@ -92,6 +106,7 @@ export const LockProvider = ({ children }) => {
         if (prev <= 1) {
           clearInterval(intervalId);
           setIsLocked(false);
+          setYour13Confirmed(false);
           clearStoredLock();
           return 0;
         }
@@ -111,13 +126,23 @@ export const LockProvider = ({ children }) => {
       ]);
       setLockTime(duration);
       setIsLocked(true);
+      setYour13Confirmed(true);
     } catch (error) {
       console.error('Error persisting lock state:', error);
     }
   };
 
   return (
-    <LockContext.Provider value={{ isLocked, lockTime, lockChoices, setLockTime }}>
+    <LockContext.Provider
+      value={{
+        isLocked,
+        lockTime,
+        lockChoices,
+        setLockTime,
+        your13Confirmed,
+        setYour13Confirmed,
+      }}
+    >
       {children}
     </LockContext.Provider>
   );

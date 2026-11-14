@@ -21,6 +21,13 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import Taskbar from './Taskbar';
 import { computeSimilarityMatrix } from './utils/algorithmUtils';
 import { useLock } from './LockContext';
+import { canAccessVibeFeatures } from './utils/playlistUtils';
+import {
+  getCachedUserProfile,
+  setCachedUserProfile,
+  getCachedUserPlaylist,
+  setCachedUserPlaylist,
+} from './utils/sessionCache';
 import {
   searchMusic,
   normalizeTrack as normalizeSong,
@@ -220,7 +227,7 @@ function Your13({ navigation }) {
     }
   };
 
-  const persistChoicesToFirestore = async (uid, choicesArray) => {
+  const persistChoicesToFirestore = async (uid, choicesArray, isConfirmed = false) => {
     if (!uid) return false;
     try {
       const docRef = doc(db, 'playlists', uid);
@@ -228,6 +235,17 @@ function Your13({ navigation }) {
         docRef,
         {
           songs: choicesArray,
+          your13Confirmed: isConfirmed,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      await setDoc(
+        doc(db, 'users', uid),
+        {
+          your13: choicesArray,
+          your13Confirmed: isConfirmed,
+          lockedAt: isConfirmed ? new Date().toISOString() : null,
           updatedAt: new Date().toISOString(),
         },
         { merge: true }
@@ -264,11 +282,7 @@ function Your13({ navigation }) {
 
     const newChoices = [...selectedChoices, music];
     setSelectedChoices(newChoices);
-    await persistChoicesToFirestore(userId, newChoices);
-
-    if (newChoices.length === 13) {
-      await lockChoices(60);
-    }
+    await persistChoicesToFirestore(userId, newChoices, false);
   };
 
   const removeChoice = async (music) => {
@@ -280,32 +294,79 @@ function Your13({ navigation }) {
       (choice) => choice.trackId !== music.trackId
     );
     setSelectedChoices(updatedChoices);
-    await persistChoicesToFirestore(userId, updatedChoices);
+    await persistChoicesToFirestore(userId, updatedChoices, false);
   };
 
   const storeChoices = async () => {
     try {
       setIsSubmitting(true);
       if (userId) {
-        await persistChoicesToFirestore(userId, selectedChoices);
+        await persistChoicesToFirestore(userId, selectedChoices, false);
+        const cachedP = getCachedUserProfile(userId);
+        if (cachedP) {
+          setCachedUserProfile(userId, { ...cachedP, your13: selectedChoices });
+        }
+        const cachedPl = getCachedUserPlaylist(userId);
+        if (cachedPl) {
+          setCachedUserPlaylist(userId, { ...cachedPl, songs: selectedChoices });
+        }
       }
       setIsSubmitting(false);
 
-      if (selectedChoices.length === 13) {
-        if (!isLocked) {
-          await lockChoices(60);
-        }
-      } else {
-        const remaining = Math.max(0, 13 - selectedChoices.length);
-        Alert.alert(
-          'Saved',
-          `${selectedChoices.length} of 13 choices saved. Pick ${remaining} ${
-            remaining === 1 ? 'more song' : 'more songs'
-          } to complete Your13.`
-        );
-      }
+      const remaining = Math.max(0, 13 - selectedChoices.length);
+      Alert.alert(
+        'Draft Saved',
+        `${selectedChoices.length} of 13 tracks saved as draft. ${
+          remaining > 0
+            ? `Pick ${remaining} ${remaining === 1 ? 'more song' : 'more songs'} to complete Your13.`
+            : 'Press "Confirm & Lock Your13 (13/13)" to lock and unlock Vibe Check.'
+        }`
+      );
     } catch (error) {
       console.error('Error storing choices:', error);
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmAndLock = async () => {
+    if (selectedChoices.length !== 13) {
+      const remaining = Math.max(0, 13 - selectedChoices.length);
+      Alert.alert(
+        'Your13 Incomplete',
+        `Please select all 13 signature tracks before confirming (${remaining} remaining).`
+      );
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      if (userId) {
+        await persistChoicesToFirestore(userId, selectedChoices, true);
+        const cachedP = getCachedUserProfile(userId);
+        if (cachedP) {
+          setCachedUserProfile(userId, {
+            ...cachedP,
+            your13: selectedChoices,
+            your13Confirmed: true,
+          });
+        }
+        const cachedPl = getCachedUserPlaylist(userId);
+        if (cachedPl) {
+          setCachedUserPlaylist(userId, {
+            ...cachedPl,
+            songs: selectedChoices,
+            your13Confirmed: true,
+          });
+        }
+      }
+      await lockChoices(60);
+      setIsSubmitting(false);
+      Alert.alert(
+        'Your13 Confirmed!',
+        'Your signature 13 tracks are locked. Vibe Check & Affinity Radar are now unlocked across Orphee.'
+      );
+    } catch (error) {
+      console.error('Error confirming Your13:', error);
       setIsSubmitting(false);
     }
   };
@@ -359,8 +420,11 @@ function Your13({ navigation }) {
   };
 
   const rankUsers = async () => {
-    if (selectedChoices.length === 0) {
-      Alert.alert('Info', 'Please select at least 1 track before running Vibe Check.');
+    if (!canAccessVibeFeatures(selectedChoices, isLocked)) {
+      Alert.alert(
+        'Your13 Incomplete',
+        'Please select and confirm all 13 signature tracks in Your13 before running Vibe Check.'
+      );
       return;
     }
 
@@ -745,9 +809,10 @@ function Your13({ navigation }) {
       {/* Action Buttons Bar */}
       <View style={styles.bottomActionBar}>
         <TouchableOpacity
-          onPress={storeChoices}
+          onPress={selectedChoices.length === 13 && !isLocked ? handleConfirmAndLock : storeChoices}
           style={[
             styles.actionSaveButton,
+            selectedChoices.length === 13 && !isLocked && styles.confirmActionButton,
             isLocked && selectedChoices.length === 13 && styles.disabledSaveButton,
           ]}
           disabled={isSubmitting || (isLocked && selectedChoices.length === 13)}
@@ -761,25 +826,39 @@ function Your13({ navigation }) {
           <Text
             style={[
               styles.actionSaveText,
+              selectedChoices.length === 13 && !isLocked && styles.confirmActionText,
               isLocked && selectedChoices.length === 13 && styles.disabledSaveText,
             ]}
           >
             {isLocked && selectedChoices.length === 13
               ? `Locked (${lockTime}s)`
               : selectedChoices.length === 13
-              ? 'Lock & Submit (13/13)'
+              ? 'Confirm & Lock Your13 (13/13)'
               : `Save (${selectedChoices.length}/13)`}
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={rankUsers} style={styles.actionRankButton}>
+        <TouchableOpacity
+          onPress={rankUsers}
+          style={[
+            styles.actionRankButton,
+            (!isLocked || selectedChoices.length !== 13) && styles.actionRankButtonGated,
+          ]}
+        >
           <FontAwesome5
-            name="users"
-            size={16}
-            color="#FFF"
+            name={(!isLocked || selectedChoices.length !== 13) ? 'lock' : 'users'}
+            size={14}
+            color={(!isLocked || selectedChoices.length !== 13) ? '#94A3B8' : '#FFF'}
             style={{ marginRight: 6 }}
           />
-          <Text style={styles.actionRankText}>Run Vibe Check</Text>
+          <Text
+            style={[
+              styles.actionRankText,
+              (!isLocked || selectedChoices.length !== 13) && styles.actionRankTextGated,
+            ]}
+          >
+            Run Vibe Check
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -1167,6 +1246,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  confirmActionButton: {
+    backgroundColor: '#FF8C00',
+    borderWidth: 1,
+    borderColor: '#FFA726',
+  },
+  confirmActionText: {
+    color: '#000000',
+    fontWeight: '800',
+  },
+  actionRankButtonGated: {
+    backgroundColor: '#161922',
+    borderWidth: 1,
+    borderColor: '#242936',
+  },
+  actionRankTextGated: {
+    color: '#64748B',
   },
 });
 
