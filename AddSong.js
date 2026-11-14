@@ -14,7 +14,7 @@ import {
 import { Text } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { db, auth } from './firebaseConfig';
-import { doc, setDoc, getDoc, updateDoc, increment } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, increment, collection, getDocs } from 'firebase/firestore';
 import { FontAwesome5 } from '@expo/vector-icons';
 import {
   createDebouncedSearch,
@@ -24,6 +24,8 @@ import {
 import { createAudioPreviewController } from './audioPreviewController';
 import { createAsyncActionLock } from './utils/actionLockUtils';
 import { resolveThemeTitle } from './ThemeDetails';
+import { toast } from './crossPlatformAlert';
+import { sanitizeLinerNote, deriveUserDropQuota } from './utils/collectiveGrooveUtils';
 
 function AddSong() {
   const navigation = useNavigation();
@@ -33,6 +35,7 @@ function AddSong() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [linerNote, setLinerNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -89,7 +92,7 @@ function AddSong() {
 
   const addSearchedSong = (rawSong) => {
     if (!userId) {
-      Alert.alert('Authentication Required', 'Please sign in to contribute songs.');
+      toast.show({ kind: 'info', message: 'Please sign in to contribute songs.' });
       return;
     }
 
@@ -100,6 +103,15 @@ function AddSong() {
         : `${song.trackName}_${song.artistName}`.replace(/[\/.#$\[\]]+/g, '_');
 
       try {
+        const songsSnap = await getDocs(collection(db, 'collective', themeId, 'songs'));
+        const existingTracks = songsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const quota = deriveUserDropQuota(existingTracks, userId);
+
+        if (!quota.canSubmit) {
+          toast.show({ kind: 'info', message: 'You already nominated 1 track for this drop.' });
+          return;
+        }
+
         const songDocRef = doc(db, 'collective', themeId, 'songs', safeSongId);
         const voteDocRef = doc(
           db,
@@ -113,23 +125,45 @@ function AddSong() {
         const existingVote = await getDoc(voteDocRef);
 
         if (existingVote.exists()) {
-          Alert.alert('Vote Already Cast', 'You have already voted for this song.');
+          toast.show({ kind: 'info', message: 'You have already voted for this song.' });
           return;
         }
+
+        const cleanLinerNote = sanitizeLinerNote(linerNote);
+        const curatorName = auth.currentUser?.displayName || 'Listener';
+        const curatorAvatar = auth.currentUser?.photoURL || null;
 
         await setDoc(voteDocRef, { userId, votedAt: new Date().toISOString() });
 
         const existingSong = await getDoc(songDocRef);
         if (existingSong.exists()) {
-          await updateDoc(songDocRef, { score: increment(1) });
+          const currentData = existingSong.data() || {};
+          const nextVoters = Array.from(new Set([...(currentData.voters || []), userId]));
+          const nextCoSigners = [
+            ...(currentData.coSigners || []),
+            { uid: userId, username: curatorName, avatar: curatorAvatar },
+          ];
+          await updateDoc(songDocRef, {
+            score: increment(1),
+            voters: nextVoters,
+            coSigners: nextCoSigners,
+            ...(cleanLinerNote && !currentData.linerNote ? { linerNote: cleanLinerNote } : {}),
+          });
         } else {
           await setDoc(songDocRef, {
             ...song,
             score: 1,
+            curatorUid: userId,
+            curatorName,
+            curatorAvatar,
+            linerNote: cleanLinerNote,
+            voters: [userId],
+            coSigners: [{ uid: userId, username: curatorName, avatar: curatorAvatar }],
             createdAt: new Date().toISOString(),
           });
         }
 
+        toast.show({ kind: 'success', message: `Nominated "${song.trackName}" to ${themeTitle}!` });
         navigation.navigate({
           name: 'Pickerchoosers',
           params: { themeId, theme: themeTitle, refresh: true },
@@ -137,7 +171,7 @@ function AddSong() {
         });
       } catch (err) {
         console.error('Error adding song to Firestore:', err);
-        Alert.alert('Error', 'Could not add song to The Collective.');
+        toast.show({ kind: 'error', message: 'Could not add song to The Collective.' });
       }
     });
   };
@@ -161,6 +195,22 @@ function AddSong() {
           placeholderTextColor="#718096"
           value={searchQuery}
           onChangeText={onSearchChange}
+        />
+      </View>
+
+      {/* Liner Note Pitch Input (WP-01) */}
+      <View style={styles.linerNoteContainer}>
+        <View style={styles.linerNoteHeaderRow}>
+          <Text style={styles.linerNoteLabel}>Liner Note Pitch (Optional)</Text>
+          <Text style={styles.linerNoteCounter}>{linerNote.length}/140</Text>
+        </View>
+        <TextInput
+          style={styles.linerNoteInput}
+          placeholder="Add a liner note pitch (e.g., 'Wait for the bassline switch at 1:42')..."
+          placeholderTextColor="#718096"
+          value={linerNote}
+          onChangeText={(txt) => setLinerNote(txt.slice(0, 140))}
+          maxLength={140}
         />
       </View>
 
@@ -254,6 +304,37 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#FFFFFF',
     fontSize: 15,
+  },
+  linerNoteContainer: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    backgroundColor: '#151821',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#242936',
+    padding: 10,
+  },
+  linerNoteHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  linerNoteLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  linerNoteCounter: {
+    color: '#FF8C00',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  linerNoteInput: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    paddingVertical: 4,
+    minHeight: 28,
   },
   resultCard: {
     flexDirection: 'row',

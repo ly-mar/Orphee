@@ -1,466 +1,350 @@
-# Actionable Engineering Specification for Gemini 3.8 Flash (Antigravity IDE)
+# Actionable Engineering Specification: "The Collective Groove" Upgrade (Antigravity IDE)
+
+This specification upgrades **The Collective** (`TheCollective.js`, `ThemeDetails.js`, `Pickerchoosers.js`, `AddSong.js`) from an anonymous, unbounded playlist list into a scarce, socially attributable, and continuously playable curation loop.
+
+---
 
 ## 0. Execution Guardrails & Verification Gate
 
-* **Characterization-First Workflow:** This codebase is fragile. Before modifying logic in any module, add or update Jest characterization tests to lock in current behavior. For visual changes, capture before/after screenshots.
-* **Atomic Work Packages:** Execute one Work Package (WP) per branch/commit using the smallest diff that satisfies all acceptance criteria. Do not perform unrelated refactors, file renames, or dependency changes.
-* **No Destructive Side Effects:** Never delete or weaken existing tests. Do not modify `.env`, secrets, signing keys, or production Firebase rules/data without explicit human approval.
+* **Characterization-First Workflow:** Before modifying screen components, implement and unit-test pure state/validation helpers in `utils/collectiveGrooveUtils.js` and `__tests__/collectiveGroove.test.js`.
+* **Dual-Shelf Parity:** The codebase routes Collective themes through both `ThemeDetails.js` and `Pickerchoosers.js`. Every UI and data-model upgrade below must be applied consistently to both screens (or extracted into a shared sub-component imported by both) so behavior never diverges based on entry route.
+
+
+* **Backward Compatibility:** Existing Firestore `themes/{themeId}` track entries lack `curatorUid`, `curatorName`, `linerNote`, and `coSigners`. All helpers must gracefully fall back for legacy tracks (`curatorName: 'Community'`, `linerNote: ''`, `coSigners: []`).
 * **Standard Verification Gate (Run After Every WP):**
 ```bash
-npx jest --ci --no-watchman   # Expect all 14 suites (61+ tests) to pass with 0 failures
-npm run lint                  # Or: npx eslint . -> expect 0 errors
+npx jest --ci --no-watchman   # Expect 15/15 suites passing with 0 failures
 npx expo export --platform web --output-dir /tmp/tubeapp-web-check # Expect exit code 0
 
 ```
 
----
-
-## 1. Scoped Findings Catalog (6 Focus Areas)
-
-### Aspect 1: Your13 Lock Flow Contradicts Itself (`VR-004`)
-
-* **Severity & Confidence:** P1 | Behavior: HIGH | Cause: MEDIUM | Area: Core Journey (`Your13.js`, `ViewChoicesScreen.js`, `LockContext.js`)
-
-
-* **Observed Behavior (from Recording):**
-* `00:29–00:33` (`Your13`): Tapping `"+ Slot #13"` triggers a native alert in ~1s: `"Your13 Complete! Your collection is now locked for 60 seconds."` At `00:33`, a banner appears reading `"All 13 choices finalized! Locked for 60s"`, yet the primary CTA button simultaneously reads `"Lock & Submit (13/13)"`.
-* `00:36` (`Your13`): Search result rows still display an active `"✕ Slot #13"` remove button while the collection is supposedly locked.
-* `00:42–01:00` (`Your Choices` / `ViewChoicesScreen.js`): The banner reads `"Selections locked for 51s"`, but red trash icons remain visible and interactive on every track row. Tapping a trash icon at `00:52` fires a `"Selection Locked"` alert. Tapping submit/save at `01:00` fires a fourth message (`"Saved & Locked"`) and restarts the 60s timer. By `02:08`, the lock expires.
-
-
-* **Root Problem:** Four separate lock notifications fire within 30 seconds (`00:30–01:00`), and the UI contradicts itself over what `"locked"`, `"finalized"`, and `"submitted"` mean.
-
-### Aspect 2: Native Browser Alerts for Almost All Feedback (`VR-003`)
-
-* **Severity & Confidence:** P2 (Systemic) | Confidence: HIGH | Area: Interaction Feedback (`crossPlatformAlert.js`, `ProfileScreen.js`, `ThemeDetails.js`, `Pickerchoosers.js`, `UpdateProfileScreen.js`, `RankedUsers.js`)
-
-
-* **Observed Behavior (from Recording):**
-* Blocking browser dialogs headed `"localhost:8081 says"` fire across 9 interactions: `00:30` (Your13 complete), `00:52` (Selection locked), `01:00` (Saved & locked), `01:08` (`"Success / Friend request sent to Sam."`), `01:38` (`"Report Submitted"`), `02:28` (`"Vote Already Cast"`), `04:32` (`"Delete Song Memoir?"`), `05:22` (`"Profile Saved"`), and `05:43` (Avatar update).
-* Only `03:48` (`Memoir.js` — `"Memoir Published"`) uses a styled in-app toast.
-
-
-* At `04:32` (`ProfileScreen.js`), the destructive confirmation dialog `"Delete Song Memoir?"` offers `"Cancel"` and `"OK"` instead of an explicit destructive `"Delete"` action.
-
-
-* At `02:28` (`Pickerchoosers.js` / `ThemeDetails.js`), tapping an already-voted `"Voted"` button fires a blocking `"Vote Already Cast"` alert instead of rendering the button in a disabled state.
-
-
-
-
-
-### Aspect 3: Blank Black Screens on Back-Navigation & Wrong-Content Flash on Login (`VR-005`)
-
-* **Severity & Confidence:** P2 | Confidence: MEDIUM | Area: Perceived Performance & First Impression (`HomeScreen.js`, `App.js`, `SongDetailsScreen.js`, `Pickerchoosers.js`, `ThemeDetails.js`, `TheCollective.js`)
-
-
-* **Observed Behavior (from Recording):**
-* **Login Wrong-Content Flash (`00:03.5`):** Immediately after login (`00:01–00:03.5`), `HomeScreen.js` flashes `"Welcome, Listener • 0/13 Your13 tracks ready"`, white image placeholder blocks, and an empty tab bar before hydrating to `"Welcome, Sigma • 12/13"` at `00:04.0`.
-
-
-* **Back-Navigation Black Frames:**
-* `02:43.5–02:44.5` (1–2s): Navigating back from `SongDetailsScreen.js` ("Track Details") produces a solid black screen for 1–2 seconds.
-
-
-* `03:17.5`, `03:20.0`, and `03:25.0` ($\le 1\text{s}$ each): Stepping back through `SongDetailsScreen.js` $\rightarrow$ Shelf (`Pickerchoosers.js` / `ThemeDetails.js`) $\rightarrow$ `TheCollective.js` $\rightarrow$ `HomeScreen.js` flashes blank black frames at each pop transition.
-
-
-
-
-
-
-
-### Aspect 4: Inconsistent Social Vocabulary, Naming, Avatars & DM Data (`VR-008`, `VR-009`)
-
-* **Severity & Confidence:** P2 (Systemic) | Confidence: HIGH (`VR-008`), MEDIUM (`VR-009`) | Area: IA, Copy & Data Coherence (`HomeScreen.js`, `ProfileScreen.js`, `RankedUsers.js`, `UserGraph.js`, `FriendsScreen.js`, `MainChatScreen.js`, `UserSearchScreen.js`)
-
-
-* **Observed Behavior (from Recording):**
-* **Brand Split (`VR-008`):** `WelcomeScreen.js` (`00:00`) and legal modals use `"TuneHub"`, whereas `HomeScreen.js` (`00:04`) reads `"Shape Your Community with Chorus"`.
-
-
-* **Feature Naming Sprawl (`VR-008`):** Eight different names are used for the twin/graph features: `"Music Twins"`, `"Sonic Twin"`, `"Sonic Soulmate"`, `"Sonic Twin Engine"`, `"Launch Affinity Graph →"`, `"Music Affinity Radar"`, `"Sonic Affinity Radar"`, and `"Launch Interactive Affinity Radar"`.
-* **Relationship Vocabulary Mismatch (`VR-008`):** `ProfileScreen.js` (`06:40`) displays `"1 Friends"`. Tapping it opens `FriendsScreen.js` with tabs `"Followers | Following | Sent | Received"`. `"Followers"` lists `Fifth` with a symmetric `"Unfriend"` button (`06:41`), while `"Following"` reads `"Not Following Anyone Yet"` (`06:43`).
-
-
-* **DM List Coherence (`VR-008`):** `MainChatScreen.js` (`06:29`) displays 5 threads, including non-connected users (`Evan_Afrobeats`, `Alpha`, `Admin`). Every row displays the static placeholder `"Tap to open conversation"` with no message preview or timestamp—even though `Sam`'s thread contains `"Hello"` (`06:30`).
-
-
-* **Stock Avatar vs. Initials Mismatch (`VR-009`):** `Fifth`, `Sam`, `Alpha`, `Marl`, and `Beta` all share the exact same stock portrait photo in `RankedUsers.js` (`01:04`), `MainChatScreen.js` (`06:29`), and `FriendsScreen.js` (`06:41`), whereas `UserSearchScreen.js` (`06:04`) renders colored initials circles for those same users.
-
-
-
-
-
-### Aspect 5: Legal Copy Leaks a Dev Annotation & Gives a Wrong Menu Path (`VR-011`)
-
-* **Severity & Confidence:** P2 | Confidence: HIGH | Area: Trust & Store Readiness (`SettingsScreen.js`)
-
-
-* **Observed Behavior (from Recording):**
-* At `07:09` (`SettingsScreen.js` Privacy Policy modal), Section 3 reads:
-
-
-* Heading: `"3. Your Rights & Account Deletion (Apple Guideline 5.1.1(v))"` (leaking an internal compliance note to end users).
-* Body: `"Navigate to Settings → Security & Privacy → Delete Account"`, whereas the actual row on `SettingsScreen.js` (`06:52`) is labeled `"Security & Account Deletion"`.
-
-
-
-
-
-
-
-### Aspect 6: Inconsistent Navigation, Back Labels, and Button Styles (`VR-013`, `VR-014`, `VR-018`)
-
-* **Severity & Confidence:** P2 (Systemic) | Confidence: MEDIUM-HIGH | Area: Navigation & Visual Consistency (`Taskbar.js`, `ProfileScreen.js`, `SettingsScreen.js`, `RankedMusicList.js`, `UploadProfilePicture.js`, `GlobalStyles.js`)
-
-
-* **Observed Behavior (from Recording):**
-* **Navigation & Back Labels (`VR-013`):**
-* On `TheCollective.js` ("Collective Groove"), no bottom tab is highlighted at `02:45` and `03:24`, yet `Home` is highlighted at `02:16`.
-
-
-* Back labels vary across 5 formats: `"Back"`, `"‹ Your13"`, `"Back to Your13"`, `"Back to Profile"`, and `"Back to Search"` (`00:42`, `02:04`, `06:00`, `06:52`).
-* On `ProfileScreen.js`, the `"Sonic Twin"` chip stays highlighted while scrolled to the top of the page (`04:49–04:51`), the 4th chip is clipped on the right edge (`"T"` at `03:48`), and the chip row mixes in-page scroll anchors with a full-screen navigation link (`"Top Charts →"`).
-
-
-
-
-* **Button Styles & Visual Consistency (`VR-014`, `VR-018`):**
-* Six competing button colors are used across screens: Orange (`Create Account`, `Save`), Sage Green (`"Explore The Collective"` at `00:04`), Lime (`"Publish Song Memoir"`, `"Change Profile Photo"`), Green (`"+ Connect"`), Blue (`"Connected"`), and full-width solid Red (`"Logout"` at `06:52`, which visually competes with destructive actions like `"Block & Report"` and `"Unfriend"`).
-* `"Community Charts"` (`RankedMusicList.js`, `04:52`) is the only screen title with an orange glow, and its counter badge reads `"115 / 13 PICKS"` (`04:53`).
-
-
-* On `UploadProfilePicture.js` (`05:32`), the disabled `"Save Profile Portrait"` button is olive-green and visually too close to the enabled lime button.
-
-
-
-
-
 
 
 ---
 
-## 2. Actionable Work Packages (Execute One Per Commit)
+## 1. Shared Data Schema & Pure Helpers (`utils/collectiveGrooveUtils.js`)
 
-### WP-01: Unify Your13 Lock State Machine & Controls (`VR-004`)
-
-* **Goal:** Establish a single coherent lock state (`open` vs. `locked`) with one notification per transition and disabled removal controls while locked.
-* **Grep Anchors:** `"locked for 60 seconds"`, `"Lock & Submit"`, `"Selection Locked"`, `"Saved & Locked"`
-* **Files to Touch:** `LockContext.js`, `Your13.js`, `ViewChoicesScreen.js`, `utils/playlistUtils.js`, `__tests__/lockAndPlaylistSafety.test.js`
-
-
-* **Implementation Steps:**
-1. Characterization Tests (`__tests__/lockAndPlaylistSafety.test.js`): Using `jest.useFakeTimers()`, write tests verifying:
-
-
-* Selecting the 13th track transitions state from `open` to `locked` (or `ready_to_lock` if manual submit is required).
-* While `isLocked === true`, countdown ticks down to `0` and transitions back to `open`.
-* Attempting to remove a track while `isLocked === true` is blocked without mutating the playlist.
-
-
-2. State Machine Consolidation (`LockContext.js`, `Your13.js`, `ViewChoicesScreen.js`):
-
-
-* Model the state cleanly: when all 13 slots are filled and locked, set `isLocked = true` with `remainingSeconds`.
-* Emit **at most one** in-app toast/banner when the lock engages (remove duplicate alerts across `Your13.js` and `ViewChoicesScreen.js`).
-
-
-3. **Disable Conflicting Controls While Locked:**
-* When `isLocked === true`, update the primary CTA in `Your13.js` to a disabled pill reading `"Locked (${remainingSeconds}s)"` (never show an enabled `"Lock & Submit (13/13)"` button while the banner says `"All 13 choices finalized! Locked for 60s"`).
-
-
-* In `Your13.js` (`"✕ Slot #..."`) and `ViewChoicesScreen.js` (row trash icons), set `disabled={isLocked}` with muted opacity (`0.35`) and hide/disable the tap handler so users cannot trigger a `"Selection Locked"` error popup.
-
-
-
-
-
-
-* **Acceptance Criteria:**
-* Completing `13/13` triggers at most one toast/banner.
-* While locked, no enabled button reads `"Lock & Submit"`, and all remove/trash controls are visually disabled and non-interactive.
-* Countdown stays within `±1s` of wall clock over 60 seconds.
-
-
-
----
-
-### WP-02: Shared In-App `Toast` & `ConfirmDialog` (`VR-003`)
-
-* **Goal:** Eliminate `"localhost:8081 says"` browser-native `window.alert` / `window.confirm` popups across all user flows and enforce explicit destructive button labels.
-* **Grep Anchors:** `"Delete Song Memoir"`, `"Vote Already Cast"`, `"Profile Saved"`, `"Friend request sent"`, `"Report Submitted"`
-* **Files to Touch:** `crossPlatformAlert.js`, `ProfileScreen.js`, `ThemeDetails.js`, `Pickerchoosers.js`, `UpdateProfileScreen.js`, `RankedUsers.js`, `UserModerationModal.js`, `__tests__/crossPlatformAlert.test.js`
-
-
-* **Implementation Steps:**
-1. Component & API Implementation (`crossPlatformAlert.js`):
-
-
-* Implement a shared, dependency-free dark-mode `Toast` and `ConfirmDialog` host (mounted once in `App.js`) exposing:
-
-
-```js
-toast.show({ kind: 'success' | 'error' | 'info', message: string, durationMs?: 3000 });
-confirm({ title, message, confirmLabel: 'Delete', cancelLabel: 'Cancel', destructive: true }): Promise<boolean>;
-
-```
-
-
-* Style `Toast` with `bg: '#151821'`, `border: '#242936'`, accent indicator (`#10B981` for success, `#FF8C00` for info, `#EF4444` for error), auto-dismissing after `3000ms` with `accessibilityLiveRegion="polite"`.
-* Style `ConfirmDialog` as an Obsidian modal (`#151821` card, `#FFFFFF` title, `#94A3B8` body) where `destructive: true` renders the confirm button in `#EF4444` with the exact `confirmLabel` (`"Delete"` or `"Unfriend"`), never `"OK"`.
-
-
-2. **Migrate Call Sites:**
-* Memoir Delete (`ProfileScreen.js`, `04:32`): Use `ConfirmDialog` with `confirmLabel: 'Delete'`, `cancelLabel: 'Cancel'`, `destructive: true`.
-
-
-* Already Voted (`ThemeDetails.js`, `Pickerchoosers.js`, `02:28`): Set `disabled={hasVoted}` on the `"Voted"` pill so tapping an already-voted track is a no-op and never triggers `"Vote Already Cast"`.
-
-
-* **Status Notifications:** Route `"Profile Saved"` (`UpdateProfileScreen.js`, `05:22`), `"Friend request sent"` (`RankedUsers.js`, `01:08`), `"Report Submitted"` (`UserModerationModal.js`, `01:38`), and Your13 lock notices (`00:30`, `01:00`) through `toast.show(...)`.
-
-
-
-
-
-
-* **Acceptance Criteria:**
-* Zero `"localhost:8081 says"` native browser alerts appear across Your13, RankedUsers, Safety Report, Collective voting, Memoir delete, or Edit Profile.
-* The Memoir delete dialog confirm button reads `"Delete"` (not `"OK"`).
-* Tapping `"Voted"` on a shelf track does not fire any alert.
-
-
-
----
-
-### WP-03: Eliminate Login Wrong-Content Flash & Back-Navigation Black Frames (`VR-005`)
-
-* **Goal:** Prevent `"Welcome, Listener • 0/13"` and white image blocks from flashing on login, and eliminate black screens during back-navigation across Track Details and Collective shelves.
-* **Grep Anchors:** `"Welcome, Listener"`, `"Could not stream audio preview"`, `detachInactiveScreens`
-* **Files to Touch:** `HomeScreen.js`, `utils/homeDashboardUtils.js`, `App.js`, `TheCollective.js`, `ThemeDetails.js`, `Pickerchoosers.js`, `SongDetailsScreen.js`, `__tests__/homeAndUiSafety.test.js`
-
-
-* **Implementation Steps:**
-1. Hydration Gate on `HomeScreen.js` (`00:03.5`):
-
-
-* In `utils/homeDashboardUtils.js` and `HomeScreen.js`, add `isHydrated: boolean` to the dashboard state (false until the first `users/{uid}` snapshot arrives).
-
-
-* While `!isHydrated`, render dark skeleton pills (`backgroundColor: '#151821'`) in place of the greeting text instead of flashing `"Welcome, Listener • 0/13 Your13 tracks ready"`.
-* Set `backgroundColor: '#151821'` on all hero card image containers in `HomeScreen.js` so image loading never shows white blocks.
-
-
-
-
-2. **Back-Navigation Continuity (`02:43.5`, `03:17.5–03:25.0`):**
-* In `App.js`, ensure `<Stack.Navigator>` sets `detachInactiveScreens={false}` (or keeps previous stack cards painted with `cardStyle: { backgroundColor: '#0A0C10' }`) so popping `SongDetailsScreen` $\rightarrow$ `Pickerchoosers` / `ThemeDetails` $\rightarrow$ `TheCollective` $\rightarrow$ `HomeScreen` does not blank out the underlying screen.
-
-
-* In `Pickerchoosers.js`, `ThemeDetails.js`, and `TheCollective.js`, do not reset existing track/shelf arrays to `[]` on focus re-entry (`useFocusEffect`); keep cached items rendered while refreshing silently in the background.
-
-
-
-
-
-
-* **Acceptance Criteria:**
-* Logging in never renders `"Welcome, Listener"`, `"0/13"`, or white image blocks prior to profile hydration.
-* Navigating back from `SongDetailsScreen` $\rightarrow$ `Shelf` $\rightarrow$ `TheCollective` $\rightarrow$ `HomeScreen` produces zero black frames $>0.3\text{s}$.
-
-
-
----
-
-### WP-04: Unify Social Vocabulary, Feature Naming, Avatars & DM Previews (`VR-008`, `VR-009`)
-
-* **Goal:** Enforce one brand name (`TuneHub`), consistent feature names (`Music Twins`, `Affinity Radar`), a unified `Friends` relationship model, consistent initials/custom avatars (no shared stock photo), and real last-message previews in Direct Messages.
-* **Grep Anchors:** `"Shape Your Community with Chorus"`, `"Sonic Twin Engine"`, `"Tap to open conversation"`, `"Not Following Anyone Yet"`, `pravatar`, `unsplash`
-* **Files to Touch:** `utils/avatarUtils.js`, `HomeScreen.js`, `ProfileScreen.js`, `RankedUsers.js`, `UserGraph.js`, `FriendsScreen.js`, `HandlingFriends.js`, `MainChatScreen.js`, `ChatScreen.js`, `UserSearchScreen.js`, `utils/chatMessageUtils.js`, `__tests__/chatMessageSafety.test.js`
-
-
-* **Implementation Steps:**
-1. **WP-04a — Shared `UserAvatar` & Stock Photo Removal (`VR-009`):**
-* In `utils/avatarUtils.js`, add a helper `isGenericStockAvatar(url)` that detects shared placeholder/stock URLs and treats them as empty so the user falls back to their deterministic colored initials badge.
-
-
-* Render the same `UserAvatar` component across `RankedUsers.js`, `MainChatScreen.js`, `FriendsScreen.js`, `UserSearchScreen.js`, and `UserProfileScreen.js` so `Fifth`, `Sam`, `Alpha`, `Marl`, and `Beta` display the exact same avatar on every screen.
-
-
-
-
-2. **WP-04b — Brand, Feature & Relationship Vocabulary (`VR-008`):**
-* **Brand Name:** In `HomeScreen.js` (`00:04`), change `"Shape Your Community with Chorus"` to `"Shape Your Community with TuneHub"`.
-
-
-* **Feature Naming:** Standardize all headers, pills, and CTAs on **`"Music Twins"`** (for `RankedUsers.js`) and **`"Affinity Radar"`** (for `UserGraph.js`), replacing `"Sonic Twin"`, `"Sonic Soulmate"`, `"Sonic Twin Engine"`, `"Music Affinity Radar"`, and `"Sonic Affinity Radar"`.
-
-
-* Friends Model (`ProfileScreen.js` & `FriendsScreen.js`): Rename the first tab in `FriendsScreen.js` from `"Followers"` to `"Friends"` (listing accepted mutual friends, matching the `"1 Friends"` counter on `ProfileScreen.js` and the `"Unfriend"` button), and ensure accepting a friend request in `HandlingFriends.js` updates both users' connected lists symmetrically.
-
-
-
-
-3. WP-04c — DM Thread Previews & Filtering (`MainChatScreen.js`, `ChatScreen.js`):
-
-
-* In `ChatScreen.js` and `utils/chatMessageUtils.js`, ensure sending a message updates `lastMessageText`, `lastMessageAt`, and `lastSenderId` on the parent `chats/{chatId}` document.
-
-
-* In `MainChatScreen.js` (`06:29`), display `chat.lastMessageText || 'No messages yet'` and the formatted timestamp (`moment(chat.lastMessageAt).fromNow()`) instead of static `"Tap to open conversation"` on every row, and only show threads that have at least one message or were explicitly opened by the user.
-
-
-
-
-
-
-* **Acceptance Criteria:**
-* The same user displays the exact same avatar across Music Twins, DMs, Friends, and Find Listeners (zero shared stock photos).
-* `ProfileScreen.js` `"Friends"` count equals the number of rows in the `"Friends"` tab of `FriendsScreen.js`.
-
-
-* `Sam`'s row in `MainChatScreen.js` (`06:29`) displays the `"Hello"` message snippet and timestamp.
-
-
-* `"Chorus"` and the 6 redundant twin/radar name variants no longer appear in the UI.
-
-
-
----
-
-### WP-05: Fix Legal Copy Dev Annotation Leak & Menu Path (`VR-011`)
-
-* **Goal:** Remove `"(Apple Guideline 5.1.1(v))"` from user-visible legal text and synchronize the account deletion menu path with the actual `SettingsScreen.js` row label.
-* **Grep Anchors:** `"Apple Guideline"`, `"Security & Privacy"`
-* **Files to Touch:** `SettingsScreen.js`, `__tests__/homeAndUiSafety.test.js`
-
-
-* **Implementation Steps:**
-1. In `SettingsScreen.js`, export `export const SECURITY_ROW_LABEL = 'Security & Account Deletion';` and use it for the Settings menu row (`06:52`).
-
-
-2. In the Privacy Policy modal (`07:09` in `SettingsScreen.js`):
-
-
-* Change `"3. Your Rights & Account Deletion (Apple Guideline 5.1.1(v))"` to `"3. Your Rights & Account Deletion"`.
-* Change `"Navigate to Settings → Security & Privacy → Delete Account"` to `"Navigate to Settings → ${SECURITY_ROW_LABEL} → Delete Account"`.
-
-
-3. Add a Jest test in `__tests__/homeAndUiSafety.test.js` asserting that the Privacy Policy text does not contain `"Apple Guideline"` and includes `SECURITY_ROW_LABEL`.
-
-
-
-
-* **Acceptance Criteria:**
-* `grep -rn "Apple Guideline"` across user-visible strings returns `0`.
-* Privacy Policy Section 3 path reads `"Settings → Security & Account Deletion → Delete Account"`.
-
-
-
----
-
-### WP-06: Standardize Navigation, Back Labels & Button Variants (`VR-013`, `VR-014`, `VR-018`)
-
-* **Goal:** Enforce one `"← Back"` header label, consistent bottom-tab highlighting on `TheCollective.js`, unclipped `ProfileScreen.js` section chips, and semantic button variants across all screens.
-* **Grep Anchors:** `"Back to Profile"`, `"Back to Search"`, `"Back to Your13"`, `"Save Profile Portrait"`, `"115 / 13 PICKS"`
-* **Files to Touch:** `GlobalStyles.js`, `Taskbar.js`, `ProfileScreen.js`, `SettingsScreen.js`, `ViewChoicesScreen.js`, `UserSearchScreen.js`, `UpdateProfileScreen.js`, `RankedMusicList.js`, `UploadProfilePicture.js`, `HomeScreen.js`
-
-
-* **Implementation Steps:**
-1. **Standardize Back Labels (`VR-013`):**
-* Replace `"‹ Your13"`, `"Back to Your13"`, `"Back to Profile"`, and `"Back to Search"` across `ViewChoicesScreen.js`, `SettingsScreen.js`, `UpdateProfileScreen.js`, and `UserSearchScreen.js` with a uniform `"← Back"` button (`minHeight: 44, minWidth: 44`).
-
-
-
-
-2. **Fix Bottom-Tab Highlighting on Collective (`VR-013`):**
-* In `Taskbar.js`, map `TheCollective` route names to highlight the `Home` tab consistently so the active indicator never disappears at `02:45` and `03:24`.
-
-
-
-
-3. Fix `ProfileScreen.js` Chips (`VR-013`):
-
-
-* Wrap the section chips in a horizontal `<ScrollView 16, 8 contentContainerStyle="{{" gap: horizontal paddingHorizontal: showsHorizontalScrollIndicator="{false}" }}>` with a right-edge fade/padding so the 4th chip is never clipped (`"T"` at `03:48`).
-* Default `activeSection` to `'your13'` when scrolled to the top (`scrollY < 120`) so `"Sonic Twin"` does not stay highlighted at the top of the page (`04:49–04:51`).
-* Separate `"Top Charts →"` visually (outlined link chip with `↗` icon or move to header action) from the in-page scroll anchor chips (`Your 13`, `Memoirs`, `Music Twins`).
-
-
-4. **Enforce Semantic Button Variants (`VR-014`, `VR-018`):**
-* Adopt the shared `Button` variants in `GlobalStyles.js` (see Section 3 below):
-
-
-* Change `"Explore The Collective"` on `HomeScreen.js` (`00:04`) from sage green (`#6E8D82`) to `primary` (`#FF8C00`) or `secondary` (`#151821` + `#FF8C00` border).
-
-
-* Change `"Logout"` on `SettingsScreen.js` (`06:52`) from full-width solid red to an outlined `secondary` button with a confirmation prompt (`ConfirmDialog`), reserving solid `danger` red (`#EF4444`) strictly for data-destructive actions (`Delete Account`, `Delete Memoir`, `Block & Report`).
-
-
-* On `UploadProfilePicture.js` (`05:32`), style the disabled `"Save Profile Portrait"` button with `backgroundColor: '#1E2430'`, `borderColor: '#242936'`, and `color: '#64748B'` so it is unmistakably disabled compared to the active `#D4F458` lime state.
-
-
-
-
-
-
-5. **Community Charts Header Polish (`VR-014`):**
-* In `RankedMusicList.js` (`04:52–04:53`), remove the orange `textShadow` glow from the `"Community Charts"` title and change `"115 / 13 PICKS"` to `"115 TOTAL PICKS"`.
-
-
-
-
-
-
-* **Acceptance Criteria:**
-* Every drill-down screen header uses `"← Back"`.
-* `TheCollective.js` keeps the `Home` tab highlighted in `Taskbar.js`.
-
-
-* `ProfileScreen.js` chips do not clip at `375px–420px` width, and `"Sonic Twin"` is not highlighted at the top of the page.
-
-
-* `"Logout"` on `SettingsScreen.js` is outlined (not solid red) and prompts for confirmation.
-
-
-* Disabled `"Save Profile Portrait"` (`05:32`) has a distinct dark-slate disabled appearance (`#1E2430` surface / `#64748B` text).
-* `"Community Charts"` title has no orange glow, and the stat pill reads `"115 TOTAL PICKS"`.
-
-
-
----
-
-## 3. Reference Design Tokens & Component Contracts
+Create `utils/collectiveGrooveUtils.js` to centralize constants, quota validation, liner-note sanitization, and Crate Radio queue logic:
 
 ```javascript
-// GlobalStyles.js / theme tokens
-export const color = {
-  bg: '#0A0C10',
-  surface: '#151821',
-  surfaceDisabled: '#1E2430',
-  border: '#242936',
-  text: '#FFFFFF',
-  textSecondary: '#94A3B8', // ~7.6:1 contrast on bg
-  textTertiary: '#64748B',  // Disabled / decorative / large text only
-  accent: '#FF8C00',        // Primary brand action
-  lime: '#D4F458',          // Memoir & profile creation actions
-  success: '#10B981',       // "+ Connect" / positive status
-  danger: '#EF4444',        // Data-destructive actions ONLY (Delete, Block, Unfriend)
-};
+export const MAX_SUBMISSIONS_PER_DROP = 1;
+export const MAX_COSIGNS_PER_DROP = 3;
+export const MAX_LINER_NOTE_LENGTH = 140;
+export const CRATE_RADIO_LIMIT = 13;
 
-export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 };
-export const radius = { sm: 8, md: 12, lg: 16, pill: 999 };
-export const type = { title: 24, heading: 18, body: 15, caption: 12 };
-export const hit = { min: 44 };
+/**
+ * Normalizes a single track entry inside a Collective theme document,
+ * preserving backward compatibility with legacy anonymous song entries.
+ */
+export function normalizeCollectiveTrack(rawTrack, index = 0) { ... }
+
+/**
+ * Computes the current user's remaining submission and Co-Sign quotas for a theme.
+ * Returns:
+ * {
+ *   submissionsUsed: number,       // 0 or 1
+ *   submissionsRemaining: number,  // 1 or 0
+ *   canSubmit: boolean,
+ *   coSignsUsed: number,           // 0..3
+ *   coSignsRemaining: number,      // 3..0
+ *   canCoSign: boolean,
+ * }
+ */
+export function deriveUserDropQuota(tracks = [], currentUid = null) { ... }
+
+/**
+ * Validates and sanitizes the optional 1-line "Liner Note" pitch (<= 140 chars).
+ * Strips line breaks and trims excess whitespace.
+ */
+export function sanitizeLinerNote(input = '') { ... }
+
+/**
+ * Validates whether currentUid can Co-Sign a specific track.
+ * Blocks if: !currentUid, already co-signed this track, or coSignsRemaining <= 0.
+ */
+export function validateCoSignAction(tracks = [], targetTrackKey, currentUid) { ... }
+
+/**
+ * Builds the ordered Top 13 playable queue for "Crate Radio", sorted by votes descending.
+ */
+export function buildCrateRadioQueue(tracks = [], limit = CRATE_RADIO_LIMIT) { ... }
 
 ```
 
-**Button Variant Rules (Max 1 Primary CTA Per Screen):**
+---
 
-* **`primary` (`#FF8C00` fill, `#0A0C10` or `#FFFFFF` bold text):** Main screen CTA (`Save`, `Create Account`, `Explore The Collective`).
-* **`secondary` (`#151821` fill, `#242936` border, `#FFFFFF` text):** Secondary actions (`Connected`, `Pending`, `Cancel`, `Logout`).
-* **`lime` (`#D4F458` fill, `#0A0C10` bold text):** Memoir publish & profile photo actions (`Publish Song Memoir`, `Change Profile Photo`).
-* **`positive` (`#10B981` fill/border):** Social connection initiation (`+ Connect`).
-* **`danger` (`#EF4444` fill/border):** Data-destructive actions only (`Delete`, `Block & Report`, `Unfriend`).
-* **`disabled` (`#1E2430` fill, `#242936` border, `#64748B` text):** Applied whenever `disabled={true}` across any button variant.
+## 2. Atomic Work Packages (Execute One Per Commit)
+
+### WP-01: Scarcity Engine (1 Submission + 3 Co-Signs Quota) & 140-Char "Liner Note" Pitch
+
+* **Goal:** Enforce a strict per-theme budget of **1 track nomination** and **3 upvotes ("Co-Signs")** per user, and let nominators attach a 140-character "Liner Note" pitch in `AddSong.js` that renders under the track title in `ThemeDetails.js` and `Pickerchoosers.js`.
+
+
+* **Files to Touch:**
+* `utils/collectiveGrooveUtils.js` *(new)*
+* `AddSong.js`
+
+
+* `ThemeDetails.js`
+
+
+* `Pickerchoosers.js`
+
+
+* `__tests__/collectiveGroove.test.js` *(new)*
+
+
+* **Implementation Steps:**
+1. **Unit Tests (`__tests__/collectiveGroove.test.js`):**
+* Verify `deriveUserDropQuota` counts tracks where `track.curatorUid === currentUid` (max 1) and tracks where `track.voters` / `track.coSigners` includes `currentUid` (max 3).
+* Verify `sanitizeLinerNote` collapses newlines to spaces, trims whitespace, and clamps length to `140` characters.
+* Verify `validateCoSignAction` returns `{ allowed: false, reason: 'quota_reached' }` when the user has already used all 3 Co-Signs on a theme, and `{ allowed: false, reason: 'already_cosigned' }` on duplicate taps.
+
+
+2. Liner Note Input & 1-Submission Guard in `AddSong.js`:
+
+
+* Above the search/results list (or in a confirmation bar when a song is selected), render a dark input field (`backgroundColor: '#151821'`, `borderColor: '#242936'`):
+* Placeholder: `"Add a liner note pitch (e.g., 'Wait for the bassline switch at 1:42')..."`
+* `maxLength={140}` with a live counter pill (`"${linerNote.length}/140"`).
+
+
+* Before writing the track to Firestore `themes/{themeId}`, check `deriveUserDropQuota(themeTracks, currentUid)`:
+* If `!canSubmit`, block the write and trigger `toast.show({ kind: 'info', message: 'You already nominated 1 track for this drop.' })`.
+
+
+* Persist metadata on the newly nominated track object:
+```javascript
+{
+  ...songData,
+  curatorUid: currentUid,
+  curatorName: currentUserDisplayName, // e.g., 'Sigma'
+  curatorAvatar: currentUserAvatarUrl || null,
+  linerNote: sanitizeLinerNote(linerNote),
+  voters: [currentUid], // Nominator automatically co-signs or starts at 1
+  coSigners: [{ uid: currentUid, username: currentUserDisplayName, avatar: currentUserAvatarUrl || null }],
+  createdAt: Date.now(),
+}
+
+```
+
+
+
+
+3. Quota Header Pill & Co-Sign Enforcement in `ThemeDetails.js` & `Pickerchoosers.js`:
+
+
+* In the shelf header, display a compact scarcity status bar:
+* **`Nominations: ${submissionsRemaining}/1 left`** • **`Co-Signs: ${coSignsRemaining}/3 left`**
+
+
+* When `submissionsRemaining === 0`, change the bottom CTA from `"+ Nominate a Track"` to a disabled pill reading `"✓ Nomination Used (1/1)"`.
+* Replace the `+1` vote button label with **`▲ Co-Sign (${score})`** (unvoted) and **`✓ Co-Signed (${score})`** (voted, `#D4F458` lime accent, `disabled={true}`).
+* If `coSignsRemaining === 0` on unvoted rows, style the button as disabled (`#1E2430`) and show an in-app toast if tapped (`"All 3 Co-Signs used for this drop."`).
+* Render `item.linerNote` (when non-empty) directly beneath the artist name in italicized `#94A3B8` text (`"“${item.linerNote}”"`).
+
+
+
+
+* **Acceptance Criteria:**
+* A user can nominate at most 1 song and cast at most 3 Co-Signs per theme.
+* Nominating a track with a Liner Note saves and renders `"“Wait for the bassline switch at 1:42”"` beneath the track title in both `ThemeDetails.js` and `Pickerchoosers.js`.
+
+
+
+
+
+---
+
+### WP-02: Social Attribution (`Curated by @username` Pill + Stacked Co-Signer Avatars)
+
+* **Goal:** Eliminate anonymous tracks by displaying a clickable **`Curated by @username`** pill and a stacked mini-avatar row of listeners who co-signed the track, routing to `UserProfileScreen.js`.
+
+
+* **Files to Touch:**
+* `ThemeDetails.js`
+
+
+* `Pickerchoosers.js`
+
+
+* `utils/collectiveGrooveUtils.js`
+* `utils/avatarUtils.js`
+* `__tests__/collectiveGroove.test.js`
+
+
+* **Implementation Steps:**
+1. **Attribution Normalization (`utils/collectiveGrooveUtils.js`):**
+* Add `resolveTrackSocialAttribution(track, usersByIdMap)` that returns:
+* `curatorUid`: `track.curatorUid || track.addedBy || track.userId || null`
+* `curatorHandle`: formatted `@username` (falling back to `@Community` for legacy anonymous seed tracks)
+* `coSignerAvatars`: up to 3 deduplicated voter profile objects (`{ uid, username, avatar }`) plus `overflowCount` (`Math.max(0, totalVoters - 3)`).
+
+
+
+
+2. Curator Pill & Profile Routing (`ThemeDetails.js`, `Pickerchoosers.js`):
+
+
+* On each track row, render a compact interactive pill (`backgroundColor: '#1E2430'`, `borderRadius: 999`, `paddingHorizontal: 8, paddingVertical: 3`):
+* Text: **`Curated by @${curatorUsername}`** (`color: '#FF8C00'` for `@username`).
+* `onPress`: If `curatorUid` is present and `curatorUid !== auth.currentUser?.uid`, call `navigation.navigate('UserProfileScreen', { userId: curatorUid, username: curatorUsername })` (or navigate to `ProfileScreen` if it is the current user).
+
+
+
+
+
+
+3. **Stacked Mini-Avatars of Co-Signers:**
+* Next to the curator pill (or beneath the Liner Note), render up to 3 overlapping `20×20` mini-avatars (`marginLeft: -6` after index 0, `borderWidth: 1.5, borderColor: '#151821'`) using the shared `UserAvatar` / initials fallback logic from `utils/avatarUtils.js`.
+* If more than 3 users co-signed, append a `+${overflowCount}` badge (`fontSize: 11, color: '#94A3B8'`).
+
+
+
+
+* **Acceptance Criteria:**
+* Every track row displays `Curated by @<username>` and stacked `20×20` avatars of its Co-Signers.
+* Tapping `Curated by @Sigma` navigates directly to `UserProfileScreen.js` (or `ProfileScreen.js` if self).
+
+
+* Legacy tracks without `curatorUid` render `Curated by @Community` cleanly without crashing.
+
+
+
+---
+
+### WP-03: Continuous "Crate Radio" Sequential Preview Player (Top 13)
+
+* **Goal:** Add a **`▶ Play Crate (Top 13)`** header button and sticky/inline mini-player in `ThemeDetails.js` and `Pickerchoosers.js` that chains 30-second track previews sequentially through `audioPreviewController.js` with an inline progress bar and a 1-tap **`▲ Co-Sign`** button.
+
+
+* **Files to Touch:**
+* `audioPreviewController.js`
+* `ThemeDetails.js`
+
+
+* `Pickerchoosers.js`
+
+
+* `utils/collectiveGrooveUtils.js`
+* `__tests__/audioPreview.test.js`
+
+
+
+
+* **Implementation Steps:**
+1. **Extend `createAudioPreviewController` (`audioPreviewController.js`):**
+* Add queue & progress support while keeping existing `playPreview(trackId, previewUrl)` callers 100% backward-compatible:
+* `playQueue(tracksQueue, startIndex = 0)`: Resolves missing/expired `previewUrl`s on-demand via `resolveFreshPreviewUrl(track)`, plays track `startIndex`, and automatically advances to `startIndex + 1` when the 30s preview finishes (`didJustFinish` on `expo-av` / `onended` on Web `window.Audio`).
+* `skipNext()` / `skipPrev()` / `stopQueue()`.
+* `onProgress((state) => ...)`: Emits `{ activeTrackId, activeTrack, queueIndex, queueLength, progressRatio, isPlaying }` every `250ms` so the UI can render a smooth `0.0 -> 1.0` progress bar.
+
+
+
+
+2. Header CTA & Inline Crate Radio Deck (`ThemeDetails.js`, `Pickerchoosers.js`):
+
+
+* In the shelf header, add a primary `#FF8C00` button: **`▶ Play Crate (Top 13)`** (toggles to **`■ Stop Crate Radio`** when active).
+* When Crate Radio is playing, display an Obsidian mini-player card (`backgroundColor: '#151821'`, `borderColor: '#FF8C00'`, `borderWidth: 1`) pinned just below the header:
+* Shows: `"CRATE RADIO • #${queueIndex + 1} OF ${queueLength}"`, current track title & artist, `"⏭ Next"` button, and a 1-tap **`▲ Co-Sign`** pill for the currently playing track (wired to the same 3-Co-Sign quota handler from WP-01).
+* Bottom edge of the mini-player renders a `3px` animated progress bar (`width: '${Math.round(progressRatio * 100)}%'`, `backgroundColor: '#D4F458'`).
+
+
+* Highlight the currently playing track row in the `FlatList` with a `#D4F458` left border indicator.
+* Ensure `navigation.addListener('blur', ...)` and component unmount call `stopQueue()` so audio never leaks across screens.
+
+
+
+
+* **Acceptance Criteria:**
+* Tapping `▶ Play Crate (Top 13)` plays the #1 track's 30s preview, updates the progress bar, and automatically advances to #2 when #1 finishes (or when `⏭ Next` is tapped).
+* Tapping `▲ Co-Sign` on the Crate Radio mini-player increments the currently playing track's score and updates the user's remaining Co-Sign quota.
+* Navigating away from the screen stops Crate Radio playback immediately.
+
+
+
+---
+
+### WP-04: 1-Tap Curation Bridge (`+ Your13` & `📖 Write Memoir` Overflow Actions)
+
+* **Goal:** Let users bridge any track discovered in The Collective straight into their personal **`Your13`** hit list or **`Song Memoir`** reflection in 1 tap.
+* **Files to Touch:**
+* `ThemeDetails.js`
+
+
+* `Pickerchoosers.js`
+
+
+* `utils/playlistUtils.js`
+* `__tests__/collectiveGroove.test.js`
+
+
+* **Implementation Steps:**
+1. **Helper for 1-Tap `Your13` Addition (`utils/playlistUtils.js`):**
+* Add `appendTrackToYour13Safely({ currentList, candidateTrack, isLocked })`:
+* Checks `isLocked` (from `LockContext.js`)—if locked, returns `{ ok: false, reason: 'locked' }`.
+
+
+* Checks if the track is already in `currentList` (via `deduplicateTracks` / `normalizeYour13List`)—if duplicate, returns `{ ok: false, reason: 'duplicate' }`.
+* Checks if `currentList.length >= 13`—if full, returns `{ ok: false, reason: 'full' }`.
+* Otherwise appends the normalized track and returns `{ ok: true, nextList, slotNumber: nextList.length }`.
+
+
+
+
+2. Row Quick-Action Menu (`ThemeDetails.js`, `Pickerchoosers.js`):
+
+
+* Next to the `▲ Co-Sign` pill on each track row, add a `⋯` (or `+`) quick-action button (`minWidth: 40, minHeight: 44`) that opens a compact dark action sheet/popover for that track with two actions:
+1. **`+ Add to Your13`**:
+* Reads the user's `users/{uid}` playlist and `LockContext` state.
+
+
+* Calls `appendTrackToYour13Safely`. On success, writes the updated list to `users/{uid}` and shows `toast.show({ kind: 'success', message: 'Added "${track.title}" to Your13 (Slot #${slotNumber})!' })`.
+* If full (`13/13`) or locked, shows an informative toast (`"Your13 is currently locked"` or `"Your13 is full (13/13) — edit your slots in Your13"`).
+
+
+2. **`📖 Write Song Memoir`**:
+* Calls `navigation.navigate('Memoir', { song: normalizedItunesTrack, preselectedTrack: normalizedItunesTrack })` so `Memoir.js` opens with the track's title, artist, artwork, and `previewUrl` pre-selected.
+
+
+
+
+
+
+
+
+
+
+* **Acceptance Criteria:**
+* Tapping `⋯` $\rightarrow$ `+ Add to Your13` on a Collective track adds it to the user's next open `Your13` slot and shows a non-blocking toast.
+* Tapping `⋯` $\rightarrow$ `📖 Write Song Memoir` navigates to `Memoir.js` with that song already attached.
+
+
+
+
+
+---
+
+## 3. Visual Layout & Token Contract for Track Rows
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ [50x50 Art]  1. Blinding Lights                        [▲ Co-Sign (5)] │
+│              The Weeknd                                          [ ⋯ ] │
+│              “Wait for the synth drop at 0:58”                         │
+│              (Curated by @Sigma)  [Av1][Av2][Av3] +2                   │
+└────────────────────────────────────────────────────────────────────────┘
+
+```
+
+* **Surface & Borders:** Row card `backgroundColor: '#151821'`, `borderColor: '#242936'`, `borderWidth: 1`, `borderRadius: 12`, `padding: 12`, `marginBottom: 10`. Active Crate Radio row uses `borderColor: '#D4F458'`.
+* **Typography:**
+* Track Title: `15px` bold `#FFFFFF`
+* Artist Name: `13px` medium `#94A3B8`
+* Liner Note Pitch: `12px` italic `#E2E8F0` (`marginTop: 4`, `numberOfLines: 2`)
+* Curator Pill: `11px` semi-bold `#94A3B8` with `@username` in `#FF8C00` (`backgroundColor: '#1E2430'`, `borderRadius: 999`, `paddingHorizontal: 8, paddingVertical: 3`)
+
+
+* **Touch Targets:** `▲ Co-Sign` pill, `⋯` overflow trigger, and `Curated by @username` pill must all maintain `minHeight: 36` (with `hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}` to meet the `44×44pt` accessibility standard).

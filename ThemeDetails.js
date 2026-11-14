@@ -2,6 +2,7 @@
 import { db } from './firebaseConfig';
 import { collection, setDoc, doc } from 'firebase/firestore';
 import { createAsyncActionLock } from './utils/actionLockUtils';
+import Pickerchoosers from './Pickerchoosers';
 
 const populateLock = createAsyncActionLock();
 
@@ -48,3 +49,5 @@ export const populateThemes = async () => {
     }
   });
 };
+
+export default Pickerchoosers;

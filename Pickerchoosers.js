@@ -29,6 +29,11 @@ import { createAsyncActionLock } from './utils/actionLockUtils';
 import { resolveThemeTitle } from './ThemeDetails';
 import { toast } from './crossPlatformAlert';
 import { normalizeTrack } from './services/musicApi';
+import {
+  deriveUserDropQuota,
+  validateCoSignAction,
+  normalizeCollectiveTrack,
+} from './utils/collectiveGrooveUtils';
 
 const isUsableArtworkUrl = (url) =>
   typeof url === 'string' &&
@@ -62,27 +67,28 @@ function Pickerchoosers() {
 
       if (!songsSnapshot.empty) {
         const dedupMap = new Map();
-        songsSnapshot.docs.forEach((docSnap) => {
+        songsSnapshot.docs.forEach((docSnap, index) => {
           const raw = { id: docSnap.id, ...docSnap.data() };
-          const titleKey = String(raw.trackName || raw.title || '').trim().toLowerCase();
-          const artistKey = String(raw.artistName || raw.artist || '').trim().toLowerCase();
+          const normalized = normalizeCollectiveTrack(raw, index);
+          const titleKey = String(normalized.trackName || '').trim().toLowerCase();
+          const artistKey = String(normalized.artistName || '').trim().toLowerCase();
           const sigKey =
-            raw.trackId != null
-              ? `id_${raw.trackId}`
+            normalized.trackId != null
+              ? `id_${normalized.trackId}`
               : titleKey && artistKey
                 ? `${titleKey}::${artistKey}`
                 : docSnap.id;
 
           const existing = dedupMap.get(sigKey);
-          if (!existing || (Number(raw.score) || 0) > (Number(existing.score) || 0)) {
+          if (!existing || (Number(normalized.score) || 0) > (Number(existing.score) || 0)) {
             dedupMap.set(sigKey, {
               ...existing,
-              ...raw,
+              ...normalized,
               id: existing?.id || docSnap.id,
-              score: Math.max(Number(raw.score) || 0, Number(existing?.score) || 0),
-              artworkUrl100: isUsableArtworkUrl(raw.artworkUrl100)
-                ? raw.artworkUrl100
-                : existing?.artworkUrl100 || raw.imageUrl || null,
+              score: Math.max(Number(normalized.score) || 0, Number(existing?.score) || 0),
+              artworkUrl100: isUsableArtworkUrl(normalized.artworkUrl100)
+                ? normalized.artworkUrl100
+                : existing?.artworkUrl100 || normalized.imageUrl || null,
             });
           }
         });
@@ -124,14 +130,26 @@ function Pickerchoosers() {
     }, [loadSongs])
   );
 
+  const quota = deriveUserDropQuota(songs, userId);
+
   const addOrIncrementSong = (song) => {
     if (!userId) {
-      toast.show({ kind: 'info', message: 'Please sign in before upvoting tracks.' });
+      toast.show({ kind: 'info', message: 'Please sign in before co-signing tracks.' });
       return;
     }
 
     const songId = song.id || `${song.trackName}-${song.artistName}`;
     if (votedIds[songId]) {
+      return;
+    }
+
+    const validation = validateCoSignAction(songs, songId, userId);
+    if (!validation.allowed) {
+      if (validation.reason === 'quota_reached') {
+        toast.show({ kind: 'info', message: 'All 3 Co-Signs used for this drop.' });
+      } else if (validation.reason === 'already_cosigned') {
+        toast.show({ kind: 'info', message: 'You have already co-signed this track.' });
+      }
       return;
     }
 
@@ -146,15 +164,30 @@ function Pickerchoosers() {
           return;
         }
 
+        const curatorName = auth.currentUser?.displayName || 'Listener';
+        const curatorAvatar = auth.currentUser?.photoURL || null;
+
         await setDoc(voteDocRef, { userId, votedAt: new Date().toISOString() });
 
         const existingSong = await getDoc(songDocRef);
         if (existingSong.exists()) {
-          await updateDoc(songDocRef, { score: increment(1) });
+          const currentData = existingSong.data() || {};
+          const nextVoters = Array.from(new Set([...(currentData.voters || []), userId]));
+          const nextCoSigners = [
+            ...(currentData.coSigners || []),
+            { uid: userId, username: curatorName, avatar: curatorAvatar },
+          ];
+          await updateDoc(songDocRef, {
+            score: increment(1),
+            voters: nextVoters,
+            coSigners: nextCoSigners,
+          });
         } else {
           await setDoc(songDocRef, {
             ...normalizeTrack(song),
             score: 1,
+            voters: [userId],
+            coSigners: [{ uid: userId, username: curatorName, avatar: curatorAvatar }],
             createdAt: new Date().toISOString(),
           });
         }
@@ -163,7 +196,7 @@ function Pickerchoosers() {
         await loadSongs();
       } catch (error) {
         console.error('Error adding or updating song in Firestore:', error);
-        toast.show({ kind: 'error', message: 'Unable to submit your vote right now.' });
+        toast.show({ kind: 'error', message: 'Unable to submit your Co-Sign right now.' });
       }
     });
   };
@@ -186,12 +219,35 @@ function Pickerchoosers() {
         </Text>
 
         <TouchableOpacity
-          onPress={() => navigation.navigate('AddSong', { themeId, theme: themeTitle })}
-          style={styles.headerAddBtn}
+          onPress={() => {
+            if (quota.submissionsRemaining === 0) {
+              toast.show({ kind: 'info', message: 'You already nominated 1 track for this drop.' });
+            } else {
+              navigation.navigate('AddSong', { themeId, theme: themeTitle });
+            }
+          }}
+          style={[styles.headerAddBtn, quota.submissionsRemaining === 0 && styles.headerAddBtnDisabled]}
           accessibilityLabel="Add a song to shelf"
         >
-          <Feather name="plus" size={17} color="#000000" />
+          <Feather name="plus" size={17} color={quota.submissionsRemaining === 0 ? '#64748B' : '#000000'} />
         </TouchableOpacity>
+      </View>
+
+      {/* Scarcity Status Bar (WP-01) */}
+      <View style={styles.scarcityBar}>
+        <View style={styles.quotaPill}>
+          <Text style={styles.quotaLabel}>Nominations:</Text>
+          <Text style={[styles.quotaValue, quota.submissionsRemaining === 0 && styles.quotaExhausted]}>
+            {quota.submissionsRemaining}/1 left
+          </Text>
+        </View>
+        <Text style={styles.quotaDivider}>•</Text>
+        <View style={styles.quotaPill}>
+          <Text style={styles.quotaLabel}>Co-Signs:</Text>
+          <Text style={[styles.quotaValue, quota.coSignsRemaining === 0 && styles.quotaExhausted]}>
+            {quota.coSignsRemaining}/3 left
+          </Text>
+        </View>
       </View>
 
       <Text style={styles.subHeader}>Music List • Ranked by Community Votes</Text>
@@ -246,46 +302,82 @@ function Pickerchoosers() {
                       <Text style={styles.artistName} numberOfLines={1}>
                         by {song.artistName || song.artist || 'Unknown Artist'}
                       </Text>
+                      {Boolean(song.linerNote) && (
+                        <Text style={styles.linerNoteText} numberOfLines={2}>
+                          “{song.linerNote}”
+                        </Text>
+                      )}
                       <Text style={styles.songScore}>
-                        {Number(song.score) || 0} {Number(song.score) === 1 ? 'vote' : 'votes'}
+                        {Number(song.score) || 0} {Number(song.score) === 1 ? 'Co-Sign' : 'Co-Signs'}
                       </Text>
                     </View>
                   </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={() => addOrIncrementSong(song)}
-                    style={[styles.voteButton, hasVoted && styles.voteButtonVoted]}
-                    disabled={hasVoted}
-                    activeOpacity={hasVoted ? 1 : 0.8}
-                    accessibilityLabel={hasVoted ? 'Already voted' : `Upvote ${song.trackName}`}
-                  >
-                    <Feather
-                      name={hasVoted ? 'check' : 'arrow-up'}
-                      size={14}
-                      color={hasVoted ? '#10B981' : '#000000'}
-                    />
-                    <Text
-                      style={[
-                        styles.voteButtonLabel,
-                        hasVoted && styles.voteButtonVotedLabel,
-                      ]}
+                  {hasVoted ? (
+                    <TouchableOpacity
+                      style={[styles.voteButton, styles.voteButtonVoted]}
+                      disabled={true}
+                      activeOpacity={1}
+                      accessibilityLabel={`Co-signed (${song.score})`}
                     >
-                      {hasVoted ? 'Voted' : '+1'}
-                    </Text>
-                  </TouchableOpacity>
+                      <Feather name="check" size={13} color="#0B0C10" />
+                      <Text style={styles.voteButtonVotedLabel}>
+                        ✓ Co-Signed ({Number(song.score) || 0})
+                      </Text>
+                    </TouchableOpacity>
+                  ) : quota.coSignsRemaining === 0 ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        toast.show({ kind: 'info', message: 'All 3 Co-Signs used for this drop.' })
+                      }
+                      style={[styles.voteButton, styles.voteButtonDisabled]}
+                      activeOpacity={0.8}
+                      accessibilityLabel="All 3 Co-Signs used"
+                    >
+                      <Feather name="arrow-up" size={13} color="#64748B" />
+                      <Text style={styles.voteButtonDisabledLabel}>
+                        ▲ Co-Sign ({Number(song.score) || 0})
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => addOrIncrementSong(song)}
+                      style={styles.voteButton}
+                      activeOpacity={0.8}
+                      accessibilityLabel={`Co-sign ${song.trackName}`}
+                    >
+                      <Feather name="arrow-up" size={13} color="#000000" />
+                      <Text style={styles.voteButtonLabel}>
+                        ▲ Co-Sign ({Number(song.score) || 0})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               );
             })
           )}
 
-          <TouchableOpacity
-            onPress={() => navigation.navigate('AddSong', { themeId, theme: themeTitle })}
-            style={styles.addSongButton}
-            activeOpacity={0.85}
-          >
-            <Feather name="plus-circle" size={18} color="#000000" />
-            <Text style={styles.addSongButtonLabel}>Add a Song</Text>
-          </TouchableOpacity>
+          {quota.submissionsRemaining === 0 ? (
+            <TouchableOpacity
+              style={[styles.addSongButton, styles.addSongButtonDisabled]}
+              disabled={true}
+              activeOpacity={1}
+            >
+              <Feather name="check-circle" size={18} color="#64748B" />
+              <Text style={[styles.addSongButtonLabel, styles.addSongButtonDisabledLabel]}>
+                ✓ Nomination Used (1/1)
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('AddSong', { themeId, theme: themeTitle })}
+              style={styles.addSongButton}
+              activeOpacity={0.85}
+            >
+              <Feather name="plus-circle" size={18} color="#000000" />
+              <Text style={styles.addSongButtonLabel}>+ Nominate a Track</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -336,6 +428,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF8C00',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerAddBtnDisabled: {
+    backgroundColor: '#1E2430',
+  },
+  scarcityBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#13161F',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginHorizontal: 14,
+    marginTop: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#242936',
+    gap: 10,
+  },
+  quotaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  quotaLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  quotaValue: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  quotaExhausted: {
+    color: '#FF8C00',
+  },
+  quotaDivider: {
+    color: '#333B4F',
+    fontSize: 12,
   },
   subHeader: {
     color: '#94A3B8',
@@ -421,6 +552,13 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginBottom: 3,
   },
+  linerNoteText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#E2E8F0',
+    marginBottom: 4,
+    lineHeight: 16,
+  },
   songScore: {
     fontSize: 12,
     color: '#FF8C00',
@@ -438,9 +576,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   voteButtonVoted: {
-    backgroundColor: 'rgba(16, 185, 129, 0.14)',
+    backgroundColor: '#D4F458',
     borderWidth: 1,
-    borderColor: '#10B981',
+    borderColor: '#D4F458',
+  },
+  voteButtonDisabled: {
+    backgroundColor: '#1E2430',
+    borderWidth: 1,
+    borderColor: '#2A3142',
   },
   voteButtonLabel: {
     fontSize: 13,
@@ -448,7 +591,12 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   voteButtonVotedLabel: {
-    color: '#10B981',
+    color: '#0B0C10',
+    fontWeight: '800',
+  },
+  voteButtonDisabledLabel: {
+    color: '#64748B',
+    fontWeight: '700',
   },
   addSongButton: {
     flexDirection: 'row',
@@ -460,10 +608,18 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     gap: 8,
   },
+  addSongButtonDisabled: {
+    backgroundColor: '#1E2430',
+    borderWidth: 1,
+    borderColor: '#2A3142',
+  },
   addSongButtonLabel: {
     fontSize: 16,
     fontWeight: '800',
     color: '#000000',
+  },
+  addSongButtonDisabledLabel: {
+    color: '#64748B',
   },
 });
 
