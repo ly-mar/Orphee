@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Text } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { db } from './firebaseConfig';
 import {
   collection,
@@ -59,6 +59,8 @@ function TheCollective() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const navigation = useNavigation();
+  const route = useRoute();
+  const params = route?.params || {};
   const actionLockRef = useRef(createAsyncActionLock());
 
   const fetchInitialThemes = useCallback(async () => {

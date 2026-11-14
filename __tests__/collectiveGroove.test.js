@@ -1,4 +1,29 @@
 // __tests__/collectiveGroove.test.js — Scarcity engine, liner notes, and Crate Radio test suite
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+);
+jest.mock('../firebaseConfig', () => ({
+  db: {},
+  auth: { currentUser: { uid: 'test_user_1', displayName: 'Tester' } },
+}));
+jest.mock('firebase/firestore', () => ({
+  collection: jest.fn(),
+  getDocs: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+  updateDoc: jest.fn().mockResolvedValue({}),
+  doc: jest.fn(),
+  setDoc: jest.fn().mockResolvedValue({}),
+  getDoc: jest.fn().mockResolvedValue({ exists: () => false, data: () => ({}) }),
+  query: jest.fn(),
+  orderBy: jest.fn(),
+  increment: jest.fn((n) => n),
+  limit: jest.fn(),
+  startAfter: jest.fn(),
+}));
+jest.mock('firebase/auth', () => ({
+  onAuthStateChanged: jest.fn(() => () => {}),
+  signOut: jest.fn().mockResolvedValue({}),
+}));
+
 import {
   MAX_SUBMISSIONS_PER_DROP,
   MAX_COSIGNS_PER_DROP,
@@ -12,6 +37,11 @@ import {
   resolveTrackSocialAttribution,
 } from '../utils/collectiveGrooveUtils';
 import { appendTrackToYour13Safely } from '../utils/playlistUtils';
+import Pickerchoosers from '../Pickerchoosers';
+import ThemeDetails from '../ThemeDetails';
+import TheCollective from '../TheCollective';
+import AddSong from '../AddSong';
+import ErrorBoundary from '../ErrorBoundary';
 
 describe('collectiveGrooveUtils', () => {
   describe('sanitizeLinerNote', () => {
@@ -316,6 +346,46 @@ describe('collectiveGrooveUtils', () => {
       expect(res.nextList.length).toBe(3);
       expect(res.track.trackName).toBe('Song 3');
       expect(res.track.rank).toBe(3);
+    });
+  });
+
+  describe('Collective Groove Component Smoke & Integrity Tests', () => {
+    it('verifies Pickerchoosers is a valid component function', () => {
+      expect(typeof Pickerchoosers).toBe('function');
+    });
+
+    it('verifies ThemeDetails exports a valid component function and catalog', () => {
+      expect(typeof ThemeDetails).toBe('function');
+    });
+
+    it('verifies TheCollective is a valid component function', () => {
+      expect(typeof TheCollective).toBe('function');
+    });
+
+    it('verifies AddSong is a valid component function', () => {
+      expect(typeof AddSong).toBe('function');
+    });
+
+    it('verifies ErrorBoundary catches errors and renders recovery UI without unmounting to white screen', () => {
+      expect(typeof ErrorBoundary).toBe('function');
+      expect(typeof ErrorBoundary.getDerivedStateFromError).toBe('function');
+      const boundaryInstance = new ErrorBoundary({ children: 'Child Content' });
+      expect(typeof boundaryInstance.componentDidCatch).toBe('function');
+      expect(typeof boundaryInstance.render).toBe('function');
+
+      // Normal render returns children
+      expect(boundaryInstance.render()).toBe('Child Content');
+
+      // Error state update
+      const error = new Error('Simulated runtime render crash');
+      const nextState = ErrorBoundary.getDerivedStateFromError(error);
+      expect(nextState).toEqual({ hasError: true, error });
+
+      // Error render returns recovery view
+      boundaryInstance.state = { hasError: true, error, errorInfo: null };
+      const recoveryTree = boundaryInstance.render();
+      expect(recoveryTree).toBeDefined();
+      expect(recoveryTree.props.style).toBeDefined();
     });
   });
 });

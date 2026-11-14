@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { installWebAlertPolyfill } from './crossPlatformAlert';
 
@@ -48,13 +49,17 @@ import MemoirSearchPage from './Memoir';
 import MemoirHistoryScreen from './MemoirHistoryScreen';
 import UploadProfilePicture from './UploadProfilePicture';
 import { LockProvider } from './LockContext';
+import ErrorBoundary from './ErrorBoundary';
 import ChatScreen from './ChatScreen';
 import MainChatScreen from './MainChatScreen';
 import TheCollective from './TheCollective';
 import Pickerchoosers from './Pickerchoosers';
+import ThemeDetails from './ThemeDetails';
 import AddSong from './AddSong';
 import { FeedbackForm, RateUsScreen, BugReportForm } from './Feedback';
 // import SimilarityFinderWidget from './future_features/SimilarityFinderWidget'; // Shelved into future_features
+
+export { ErrorBoundary };
 
 const Stack = createStackNavigator();
 const navigationRef = createNavigationContainerRef();
@@ -155,62 +160,65 @@ export default function App() {
   }
 
   return (
-    <WebTestingWrapper navigationRef={navigationRef}>
-      <LockProvider>
-        <PaperProvider>
-          <View style={styles.appRootContainer}>
-            <NavigationContainer ref={navigationRef} theme={AppNavigationTheme}>
-              <Stack.Navigator
-                initialRouteName={currentUser ? 'Home' : 'Welcome'}
-                {...(Platform.OS !== 'web' ? { detachInactiveScreens: false } : {})}
-                screenOptions={{
-                  headerShown: false,
-                  ...(Platform.OS !== 'web' ? { detachPreviousScreen: false } : {}),
-                  cardStyle: { flex: 1, width: '100%', height: '100%', backgroundColor: '#0A0C10' },
-                  contentStyle: { flex: 1, width: '100%', height: '100%', backgroundColor: '#0A0C10' },
-                }}
-              >
-              <Stack.Screen name="Welcome" component={WelcomeScreen} />
-              <Stack.Screen name="Home" component={HomeScreen} />
-              <Stack.Screen name="Your13" component={Your13} />
-              <Stack.Screen name="MusicOfTheDay" component={MusicOfTheDayScreen} />
-              <Stack.Screen name="Registration" component={RegistrationStack} />
-              <Stack.Screen name="Profile" component={ProfileScreen} />
-              <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
-              <Stack.Screen name="RankedUsers" component={RankedUsers} />
-              <Stack.Screen name="UserGraph" component={UserGraph} />
-              <Stack.Screen name="FriendsScreen" component={FriendsScreen} />
-              <Stack.Screen name="ViewChoicesScreen" component={ViewChoicesScreen} />
-              <Stack.Screen name="RankedMusicList" component={RankedMusicList} />
-              <Stack.Screen name="SongDetails" component={SongDetailsScreen} />
-              <Stack.Screen name="UserSearchScreen" component={UserSearchScreen} />
-              <Stack.Screen name="UserProfile" component={UserProfileScreen} />
-              <Stack.Screen name="NotifPage" component={NotifPage} />
-              <Stack.Screen name="SettingsScreen" component={SettingsScreen} />
-              <Stack.Screen name="UpdateProfileScreen" component={UpdateProfileScreen} />
-              <Stack.Screen name="SecuritySettings" component={SecuritySettings} />
-              <Stack.Screen name="NotificationSettings" component={NotificationSettings} />
-              <Stack.Screen name="Algo" component={Algo} />
-              <Stack.Screen name="Memoir" component={MemoirSearchPage} />
-              <Stack.Screen name="MemoirSearchPage" component={MemoirSearchPage} />
-              <Stack.Screen name="MemoirHistoryScreen" component={MemoirHistoryScreen} />
-              <Stack.Screen name="UploadProfilePicture" component={UploadProfilePicture} />
-              <Stack.Screen name="ChatScreen" component={ChatScreen} />
-              <Stack.Screen name="MainChatScreen" component={MainChatScreen} />
-              <Stack.Screen name="TheCollective" component={TheCollective} />
-              <Stack.Screen name="Pickerchoosers" component={Pickerchoosers} />
-              <Stack.Screen name="AddSong" component={AddSong} />
-              <Stack.Screen name="Feedback" component={FeedbackForm} />
-              <Stack.Screen name="Rate" component={RateUsScreen} />
-              <Stack.Screen name="Bug" component={BugReportForm} />
-              {/* Shelved into future_features */}
-              {/* <Stack.Screen name="SimilarityFinder" component={SimilarityFinderWidget} /> */}
-            </Stack.Navigator>
-          </NavigationContainer>
-          </View>
-        </PaperProvider>
-      </LockProvider>
-    </WebTestingWrapper>
+    <ErrorBoundary>
+      <WebTestingWrapper navigationRef={navigationRef}>
+        <LockProvider>
+          <PaperProvider>
+            <View style={styles.appRootContainer}>
+              <NavigationContainer ref={navigationRef} theme={AppNavigationTheme}>
+                <Stack.Navigator
+                  initialRouteName={currentUser ? 'Home' : 'Welcome'}
+                  {...(Platform.OS !== 'web' ? { detachInactiveScreens: false } : {})}
+                  screenOptions={{
+                    headerShown: false,
+                    ...(Platform.OS !== 'web' ? { detachPreviousScreen: false } : {}),
+                    cardStyle: { flex: 1, width: '100%', height: '100%', backgroundColor: '#0A0C10' },
+                    contentStyle: { flex: 1, width: '100%', height: '100%', backgroundColor: '#0A0C10' },
+                  }}
+                >
+                <Stack.Screen name="Welcome" component={WelcomeScreen} />
+                <Stack.Screen name="Home" component={HomeScreen} />
+                <Stack.Screen name="Your13" component={Your13} />
+                <Stack.Screen name="MusicOfTheDay" component={MusicOfTheDayScreen} />
+                <Stack.Screen name="Registration" component={RegistrationStack} />
+                <Stack.Screen name="Profile" component={ProfileScreen} />
+                <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
+                <Stack.Screen name="RankedUsers" component={RankedUsers} />
+                <Stack.Screen name="UserGraph" component={UserGraph} />
+                <Stack.Screen name="FriendsScreen" component={FriendsScreen} />
+                <Stack.Screen name="ViewChoicesScreen" component={ViewChoicesScreen} />
+                <Stack.Screen name="RankedMusicList" component={RankedMusicList} />
+                <Stack.Screen name="SongDetails" component={SongDetailsScreen} />
+                <Stack.Screen name="UserSearchScreen" component={UserSearchScreen} />
+                <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+                <Stack.Screen name="NotifPage" component={NotifPage} />
+                <Stack.Screen name="SettingsScreen" component={SettingsScreen} />
+                <Stack.Screen name="UpdateProfileScreen" component={UpdateProfileScreen} />
+                <Stack.Screen name="SecuritySettings" component={SecuritySettings} />
+                <Stack.Screen name="NotificationSettings" component={NotificationSettings} />
+                <Stack.Screen name="Algo" component={Algo} />
+                <Stack.Screen name="Memoir" component={MemoirSearchPage} />
+                <Stack.Screen name="MemoirSearchPage" component={MemoirSearchPage} />
+                <Stack.Screen name="MemoirHistoryScreen" component={MemoirHistoryScreen} />
+                <Stack.Screen name="UploadProfilePicture" component={UploadProfilePicture} />
+                <Stack.Screen name="ChatScreen" component={ChatScreen} />
+                <Stack.Screen name="MainChatScreen" component={MainChatScreen} />
+                <Stack.Screen name="TheCollective" component={TheCollective} />
+                <Stack.Screen name="Pickerchoosers" component={Pickerchoosers} />
+                <Stack.Screen name="ThemeDetails" component={ThemeDetails} />
+                <Stack.Screen name="AddSong" component={AddSong} />
+                <Stack.Screen name="Feedback" component={FeedbackForm} />
+                <Stack.Screen name="Rate" component={RateUsScreen} />
+                <Stack.Screen name="Bug" component={BugReportForm} />
+                {/* Shelved into future_features */}
+                {/* <Stack.Screen name="SimilarityFinder" component={SimilarityFinderWidget} /> */}
+              </Stack.Navigator>
+            </NavigationContainer>
+            </View>
+          </PaperProvider>
+        </LockProvider>
+      </WebTestingWrapper>
+    </ErrorBoundary>
   );
 }
 

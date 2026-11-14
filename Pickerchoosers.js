@@ -1,5 +1,5 @@
 // Pickerchoosers.js — Collective Theme Music List & Voting [VR-001, VR-004, VR-006, VR-021]
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -27,7 +27,6 @@ import {
   increment,
 } from 'firebase/firestore';
 import { createAsyncActionLock } from './utils/actionLockUtils';
-import { resolveThemeTitle } from './ThemeDetails';
 import { toast } from './crossPlatformAlert';
 import { normalizeTrack, searchMusic } from './services/musicApi';
 import {
@@ -36,10 +35,11 @@ import {
   normalizeCollectiveTrack,
   resolveTrackSocialAttribution,
   buildCrateRadioQueue,
+  resolveThemeTitle,
 } from './utils/collectiveGrooveUtils';
 import { UserAvatar } from './utils/avatarUtils';
 import { createAudioPreviewController } from './audioPreviewController';
-import { useLock } from './LockContext';
+import { LockContext, useLock } from './LockContext';
 import { appendTrackToYour13Safely } from './utils/playlistUtils';
 
 const isUsableArtworkUrl = (url) =>
@@ -51,8 +51,9 @@ const isUsableArtworkUrl = (url) =>
 function Pickerchoosers() {
   const route = useRoute();
   const navigation = useNavigation();
-  const themeId = route?.params?.themeId || 'child_of_the_80s';
-  const themeTitle = resolveThemeTitle(themeId, route?.params?.theme);
+  const params = route?.params || {};
+  const themeId = params.themeId || 'child_of_the_80s';
+  const themeTitle = resolveThemeTitle(themeId, params.theme);
 
   const [songs, setSongs] = useState([]);
   const songsRef = useRef(songs);
@@ -62,7 +63,8 @@ function Pickerchoosers() {
   const [activeMenuSong, setActiveMenuSong] = useState(null);
   const [loading, setLoading] = useState(true);
   const userId = auth.currentUser?.uid;
-  const { isLocked } = useLock();
+  const lockCtx = useLock();
+  const isLocked = Boolean(lockCtx?.isLocked);
   const actionLockRef = useRef(createAsyncActionLock());
 
   const loadSongs = useCallback(async () => {
@@ -546,8 +548,8 @@ function Pickerchoosers() {
                                 ]}
                               >
                                 <UserAvatar
-                                  avatarUrl={signer.avatar}
-                                  name={signer.username}
+                                  imageUrl={signer.avatar || signer.avatarUrl}
+                                  name={signer.username || 'Listener'}
                                   size={20}
                                 />
                               </View>

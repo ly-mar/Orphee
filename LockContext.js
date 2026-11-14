@@ -6,14 +6,14 @@ import { auth } from './firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { calculateRemainingLockSeconds } from './utils/playlistUtils';
 
-const LockContext = createContext({
+export const LockContext = createContext({
   isLocked: false,
   lockTime: 0,
   lockChoices: async () => { },
   setLockTime: () => { },
 });
 
-export const useLock = () => useContext(LockContext);
+export const useLock = () => useContext(LockContext) || {};
 
 const LOCK_TIME_KEY = 'lockTime';
 const LOCK_TIMESTAMP_KEY = 'lockTimestamp';
@@ -122,3 +122,5 @@ export const LockProvider = ({ children }) => {
     </LockContext.Provider>
   );
 };
+
+export default LockContext;

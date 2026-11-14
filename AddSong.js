@@ -23,15 +23,15 @@ import {
 } from './services/musicApi';
 import { createAudioPreviewController } from './audioPreviewController';
 import { createAsyncActionLock } from './utils/actionLockUtils';
-import { resolveThemeTitle } from './ThemeDetails';
 import { toast } from './crossPlatformAlert';
-import { sanitizeLinerNote, deriveUserDropQuota } from './utils/collectiveGrooveUtils';
+import { sanitizeLinerNote, deriveUserDropQuota, resolveThemeTitle } from './utils/collectiveGrooveUtils';
 
 function AddSong() {
   const navigation = useNavigation();
   const route = useRoute();
-  const themeId = route?.params?.themeId || 'child_of_the_80s';
-  const themeTitle = resolveThemeTitle(themeId, route?.params?.theme);
+  const params = route?.params || {};
+  const themeId = params.themeId || 'child_of_the_80s';
+  const themeTitle = resolveThemeTitle(themeId, params.theme);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
