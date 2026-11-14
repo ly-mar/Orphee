@@ -175,7 +175,7 @@ function ProfileScreen({ navigation }) {
   const [uploading, setUploading] = useState(false);
 
   // UI/UX State matching attached reference designs
-  const [activeTab, setActiveTab] = useState('your13'); // 'your13' | 'memoirs' | 'sonicTwin'
+  const [activeTab, setActiveTab] = useState('your13'); // 'your13' | 'memoirs'
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [activeGenreFilter, setActiveGenreFilter] = useState(null);
   const [carouselIndex, setCarouselIndex] = useState(0);
@@ -742,13 +742,6 @@ function ProfileScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScroll={(e) => {
-          const scrollY = e.nativeEvent?.contentOffset?.y ?? 0;
-          if (scrollY < 120 && activeTab === 'sonicTwin') {
-            setActiveTab('your13');
-          }
-        }}
       >
         {/* TOP AMBIENT HEADER BAR (Design 3: Circular Avatar + Glassmorphic Utility Icons) */}
         <View style={styles.topUtilityHeader}>
@@ -828,7 +821,7 @@ function ProfileScreen({ navigation }) {
                   activeTab === 'your13' && styles.categoryPillTextActive,
                 ]}
               >
-                Your 13 ({selectedSongs.length})
+                Your13 ({selectedSongs.length})
               </Text>
             </TouchableOpacity>
 
@@ -846,23 +839,6 @@ function ProfileScreen({ navigation }) {
                 ]}
               >
                 Song Memoirs ({memoirs.length})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.categoryPill,
-                activeTab === 'sonicTwin' && styles.categoryPillActive,
-              ]}
-              onPress={() => setActiveTab('sonicTwin')}
-            >
-              <Text
-                style={[
-                  styles.categoryPillText,
-                  activeTab === 'sonicTwin' && styles.categoryPillTextActive,
-                ]}
-              >
-                Vibe Check
               </Text>
             </TouchableOpacity>
 
@@ -971,7 +947,7 @@ function ProfileScreen({ navigation }) {
                   onPress={() => setActiveTab('your13')}
                 >
                   <Text style={styles.statNumber}>{selectedSongs.length}</Text>
-                  <Text style={styles.statLabel}>Your 13</Text>
+                  <Text style={styles.statLabel}>Your13</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1156,7 +1132,7 @@ function ProfileScreen({ navigation }) {
                   <TouchableOpacity
                     style={styles.lavenderOutlineCircle}
                     onPress={() => navigation.navigate('Your13')}
-                    accessibilityLabel="Edit Your 13 playlist"
+                    accessibilityLabel="Edit Your13 playlist"
                   >
                     <Feather name="edit-2" size={15} color="#1A1026" />
                   </TouchableOpacity>
@@ -1217,7 +1193,7 @@ function ProfileScreen({ navigation }) {
                   onPress={() => navigation.navigate('Your13')}
                 >
                   <Text style={styles.chartreusePrimaryBtnText}>
-                    Curate Your 13 Songs
+                    Curate Your13 Songs
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1390,32 +1366,6 @@ function ProfileScreen({ navigation }) {
                 );
               })
             )}
-          </View>
-        )}
-
-        {/* TAB 3: SONIC TWIN */}
-        {activeTab === 'sonicTwin' && (
-          <View style={styles.tabSectionContainer}>
-            <Text style={styles.sectionHeading}>Sonic Compatibility</Text>
-
-            <TouchableOpacity
-              style={styles.lavenderSpotlightCard}
-              onPress={() => navigation.navigate('UserGraph')}
-              activeOpacity={0.9}
-            >
-              <View style={styles.lavenderLeftCol}>
-                <Text style={styles.lavenderCardTitle}>Affinity Radar</Text>
-                <Text style={styles.lavenderCardSub}>
-                  Compare your 13 tracks against the Orphee community graph.
-                </Text>
-                <View style={styles.lavenderActionsRow}>
-                  <View style={styles.deepPurplePlayBtn}>
-                    <Ionicons name="analytics" size={16} color="#FFFFFF" />
-                  </View>
-                  <Text style={styles.exploreGraphText}>Launch Affinity Radar →</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
