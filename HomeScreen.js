@@ -1,12 +1,23 @@
-// HomeScreen.js
+// HomeScreen.js — Orphee Pulse Discovery Hub [WP-03, VR-004, VR-005]
 import React, { useState, useEffect } from 'react';
-import { ScrollView, StyleSheet, SafeAreaView, TouchableOpacity, ImageBackground, View } from 'react-native';
-import { Text, Card, Button } from 'react-native-paper';
+import {
+  ScrollView,
+  StyleSheet,
+  SafeAreaView,
+  TouchableOpacity,
+  ImageBackground,
+  View,
+} from 'react-native';
+import { Text, Button } from 'react-native-paper';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { Feather } from '@expo/vector-icons';
 import { auth, db } from './firebaseConfig';
 import { subscribeSafeSnapshot } from './firestoreListenerUtils';
-import { deriveHomeDashboardState } from './utils/homeDashboardUtils';
+import {
+  deriveHomeDashboardState,
+  deriveVibeMatchPreview,
+} from './utils/homeDashboardUtils';
 import Taskbar from './Taskbar';
 import backgroundImage from './assets/bri-tucker-AJD3XJlvBZ8-unsplash.jpg';
 import {
@@ -94,6 +105,7 @@ function HomeScreen({ navigation }) {
 
   const effectiveProfileDoc = userProfileDoc ?? (safetyHydrate ? {} : null);
   const dashboardState = deriveHomeDashboardState(currentUser, effectiveProfileDoc, userPlaylistDoc);
+  const vibePreviewText = deriveVibeMatchPreview(effectiveProfileDoc?.rankedUsers || []);
 
   return (
     <ImageBackground source={backgroundImage} style={styles.backgroundImage}>
@@ -104,8 +116,47 @@ function HomeScreen({ navigation }) {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.contentWrapper}>
-              <View style={styles.headerBlock}>
-                <Text style={styles.headerText}>Shape Your Community with TuneHub</Text>
+              {/* Top Quick Bar: Brand, Search, Friends, Notifications */}
+              <View style={styles.topBarRow}>
+                <View style={styles.brandTitleWrap}>
+                  <Text style={styles.brandTitle}>Orphee</Text>
+                  <Text style={styles.brandSubtitle}>Pulse</Text>
+                </View>
+
+                <View style={styles.topActionsRow}>
+                  <TouchableOpacity
+                    style={styles.iconBtn}
+                    onPress={() => navigation.navigate('FriendsScreen')}
+                    accessibilityLabel="Friends"
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="users" size={18} color="#CBD5E1" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.iconBtn}
+                    onPress={() => navigation.navigate('NotifPage')}
+                    accessibilityLabel="Notifications"
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="bell" size={18} color="#FF8C00" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Quick Search Bar */}
+              <TouchableOpacity
+                style={styles.searchBarBox}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('UserSearchScreen')}
+                accessibilityLabel="Find Listeners & Friends"
+              >
+                <Feather name="search" size={16} color="#FF8C00" style={{ marginRight: 10 }} />
+                <Text style={styles.searchBarPlaceholder}>Find Listeners & Friends...</Text>
+              </TouchableOpacity>
+
+              {/* Greeting & Hydration Status Header */}
+              <View style={styles.greetingBlock}>
                 {dashboardState.isAuthenticated && !dashboardState.isHydrated ? (
                   <View style={styles.skeletonSubHeader}>
                     <View style={styles.skeletonPill} />
@@ -114,103 +165,119 @@ function HomeScreen({ navigation }) {
                   <Text style={styles.subHeaderText}>
                     {dashboardState.isAuthenticated
                       ? `Welcome, ${dashboardState.displayName} • ${dashboardState.progressCount}/${dashboardState.requiredCount} Your13 tracks ready`
-                      : 'The social platform designed for music lovers & party regulars'}
+                      : 'The social curation network designed for genuine music discovery'}
                   </Text>
                 )}
               </View>
 
-              {/* Your13 Card */}
-              <TouchableOpacity
-                style={styles.card}
-                activeOpacity={0.88}
-                onPress={() => navigation.navigate('Your13')}
-              >
-                <Card.Cover source={require('./assets/your13.jpg')} style={styles.cardCover} />
+              {/* Module 1: Vibe Check & Affinity Graph (Hero Card) */}
+              <View style={styles.card}>
                 <View style={styles.cardContent}>
-                  <Text style={styles.cardTitle}>Your13</Text>
+                  <View style={styles.tagRow}>
+                    <Text style={styles.tagLabel}>⚡ VIBE CHECK & AFFINITY</Text>
+                  </View>
+                  <Text style={styles.cardTitle}>Find Your Vibe Matches</Text>
                   <Text style={styles.cardText}>
-                    {dashboardState.isAuthenticated && dashboardState.progressCount > 0
-                      ? `${dashboardState.progressCount}/${dashboardState.requiredCount} signature tracks curated • Find your musical twins`
-                      : 'Curate your 13 signature tracks and find your musical twins'}
+                    Discover listeners on your exact musical wavelength by comparing your 13 signature tracks across the community.
                   </Text>
-                  <Button
-                    mode="contained"
-                    style={styles.cardButton}
-                    buttonColor="#FF8C00"
-                    textColor="#000000"
-                    labelStyle={styles.buttonLabel}
-                  >
-                    Open Your13
-                  </Button>
-                </View>
-              </TouchableOpacity>
 
-              {/* The Collective Groove Card */}
-              <TouchableOpacity
-                style={styles.card}
-                activeOpacity={0.88}
-                onPress={() => navigation.navigate('TheCollective')}
-              >
-                <Card.Cover source={require('./assets/collective.jpg')} style={styles.cardCover} />
+                  <View style={styles.previewPill}>
+                    <Feather name="zap" size={13} color="#FF8C00" style={{ marginRight: 6 }} />
+                    <Text style={styles.previewPillText} numberOfLines={1}>
+                      {vibePreviewText}
+                    </Text>
+                  </View>
+
+                  <View style={styles.dualButtonRow}>
+                    <Button
+                      mode="contained"
+                      style={[styles.actionBtn, styles.primaryActionBtn]}
+                      buttonColor="#FF8C00"
+                      textColor="#000000"
+                      labelStyle={styles.actionBtnLabel}
+                      onPress={() => navigation.navigate('RankedUsers', { rankedUsers: [] })}
+                      icon="lightning-bolt"
+                    >
+                      Run Vibe Check
+                    </Button>
+
+                    <Button
+                      mode="contained"
+                      style={[styles.actionBtn, styles.secondaryActionBtn]}
+                      buttonColor="#1E2430"
+                      textColor="#FFFFFF"
+                      labelStyle={styles.actionBtnLabel}
+                      onPress={() => navigation.navigate('UserGraph', { rankedUsers: [] })}
+                      icon="share-variant"
+                    >
+                      Affinity Graph
+                    </Button>
+                  </View>
+                </View>
+              </View>
+
+              {/* Module 2: Daily Song Memoir Prompt */}
+              <View style={styles.card}>
                 <View style={styles.cardContent}>
-                  <Text style={styles.cardTitle}>The Collective Groove</Text>
-                  <Text style={styles.cardText}>Community-curated music shelves organized by mood & vibe</Text>
+                  <View style={styles.tagRow}>
+                    <Text style={[styles.tagLabel, { color: '#D4F458' }]}>📖 DAILY SONG MEMOIR</Text>
+                  </View>
+                  <Text style={styles.cardTitle}>Capture Today's Musical Memoir</Text>
+                  <Text style={styles.cardText}>
+                    Anchor your memories to music. Reflect on the single song defining your day and browse the community memoir feed.
+                  </Text>
+
+                  <View style={styles.dualButtonRow}>
+                    <Button
+                      mode="contained"
+                      style={[styles.actionBtn, styles.memoirActionBtn]}
+                      buttonColor="#D4F458"
+                      textColor="#000000"
+                      labelStyle={styles.actionBtnLabel}
+                      onPress={() => navigation.navigate('Memoir')}
+                      icon="book-open-page-variant"
+                    >
+                      Log Song Memoir
+                    </Button>
+
+                    <Button
+                      mode="contained"
+                      style={[styles.actionBtn, styles.secondaryActionBtn]}
+                      buttonColor="#1E2430"
+                      textColor="#FFFFFF"
+                      labelStyle={styles.actionBtnLabel}
+                      onPress={() => navigation.navigate('MemoirHistoryScreen')}
+                      icon="history"
+                    >
+                      Memoir History
+                    </Button>
+                  </View>
+                </View>
+              </View>
+
+              {/* Module 3: Community Charts & Rankings */}
+              <View style={styles.card}>
+                <View style={styles.cardContent}>
+                  <View style={styles.tagRow}>
+                    <Text style={styles.tagLabel}>🏆 COMMUNITY CHARTS</Text>
+                  </View>
+                  <Text style={styles.cardTitle}>Community Charts</Text>
+                  <Text style={styles.cardText}>
+                    Explore the top 13 tracks, trending artists, and mood shelves dominating community playlists.
+                  </Text>
+
                   <Button
                     mode="outlined"
-                    style={[styles.cardButton, styles.secondaryCardButton]}
-                    buttonColor="#151821"
-                    textColor="#FFFFFF"
-                    labelStyle={styles.buttonLabel}
+                    style={styles.chartsButton}
+                    textColor="#FF8C00"
+                    labelStyle={styles.actionBtnLabel}
+                    onPress={() => navigation.navigate('RankedMusicList')}
+                    icon="trophy"
                   >
-                    Explore The Collective
+                    View Community Charts
                   </Button>
                 </View>
-              </TouchableOpacity>
-              {/* Shelved: AI Similarity Finder & Calculator Card (see future_features/) */}
-              {/* <TouchableOpacity
-                style={styles.card}
-                activeOpacity={0.88}
-                onPress={() => navigation.navigate('SimilarityFinder')}
-              >
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardTitle}>AI Similarity Finder & Calculator</Text>
-                  <Text style={styles.cardText}>
-                    Discover the 10 closest sonic matches to any song or compare two tracks across Audio, Lyrics & Metadata
-                  </Text>
-                  <Button
-                    mode="contained"
-                    style={styles.cardButton}
-                    buttonColor="#10B981"
-                    textColor="#000000"
-                    labelStyle={styles.buttonLabel}
-                    onPress={() => navigation.navigate('SimilarityFinder')}
-                  >
-                    Launch Similarity Finder
-                  </Button>
-                </View>
-              </TouchableOpacity> */}
-              {/* Community Charts Card */}
-              {/* <TouchableOpacity
-                style={styles.card}
-                activeOpacity={0.88}
-                onPress={() => navigation.navigate('RankedMusicList')}
-              >
-                <Card.Cover source={require('./assets/gabriel-bassino-zEawlLdVloo-unsplash.jpg')} style={styles.cardCover} />
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardTitle}>Community Charts</Text>
-                  <Text style={styles.cardText}>Top songs, artists & genres determined by everyone's 13 choices</Text>
-                  <Button
-                    mode="contained"
-                    style={styles.cardButton}
-                    buttonColor="#FF8C00"
-                    textColor="#000000"
-                    labelStyle={styles.buttonLabel}
-                  >
-                    View Charts
-                  </Button>
-                </View>
-              </TouchableOpacity> */}
-
+              </View>
             </View>
           </ScrollView>
 
@@ -232,7 +299,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
-    backgroundColor: 'rgba(10, 12, 16, 0.85)',
+    backgroundColor: 'rgba(10, 12, 16, 0.88)',
   },
   container: {
     flex: 1,
@@ -240,7 +307,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   scrollContainer: {
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingBottom: 116, // Clears floating bottom Taskbar dock
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -249,29 +316,70 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 480,
   },
-  headerBlock: {
-    marginBottom: 20,
+  topBarRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  headerText: {
+  brandTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+  },
+  brandTitle: {
     color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 6,
-    letterSpacing: -0.3,
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  brandSubtitle: {
+    color: '#FF8C00',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  topActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#161922',
+    borderWidth: 1,
+    borderColor: '#242B3B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchBarBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161922',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#242B3B',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginBottom: 14,
+  },
+  searchBarPlaceholder: {
+    color: '#94A3B8',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  greetingBlock: {
+    marginBottom: 16,
   },
   subHeaderText: {
     color: '#94A3B8',
     fontSize: 13,
-    textAlign: 'center',
     lineHeight: 18,
   },
   skeletonSubHeader: {
     height: 18,
-    alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
   },
   skeletonPill: {
     height: 12,
@@ -280,47 +388,83 @@ const styles = StyleSheet.create({
     backgroundColor: '#151821',
   },
   card: {
-    backgroundColor: '#161922',
+    backgroundColor: '#151821',
     borderRadius: 16,
-    marginBottom: 20,
+    marginBottom: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#242B3B',
+    borderColor: '#242936',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 12,
   },
-  cardCover: {
-    height: 160,
-    borderRadius: 0,
-    backgroundColor: '#151821',
-  },
   cardContent: {
     padding: 16,
   },
+  tagRow: {
+    marginBottom: 6,
+  },
+  tagLabel: {
+    color: '#FF8C00',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   cardTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFFFFF',
     marginBottom: 4,
   },
   cardText: {
     fontSize: 13,
     color: '#94A3B8',
-    marginBottom: 14,
+    marginBottom: 12,
     lineHeight: 18,
   },
-  cardButton: {
-    borderRadius: 10,
-    paddingVertical: 2,
+  previewPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1B202C',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#262E3E',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 14,
   },
-  secondaryCardButton: {
+  previewPillText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  dualButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 1,
+  },
+  primaryActionBtn: {},
+  secondaryActionBtn: {
+    borderWidth: 1,
+    borderColor: '#2A3346',
+  },
+  memoirActionBtn: {},
+  chartsButton: {
     borderColor: '#FF8C00',
     borderWidth: 1,
+    borderRadius: 10,
+    backgroundColor: '#181C26',
+    paddingVertical: 1,
   },
-  buttonLabel: {
-    fontSize: 13,
+  actionBtnLabel: {
+    fontSize: 12,
     fontWeight: '700',
   },
 });

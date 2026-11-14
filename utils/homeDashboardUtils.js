@@ -47,3 +47,30 @@ export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
   };
 }
 
+export function deriveVibeMatchPreview(rankedUsers = []) {
+  if (Array.isArray(rankedUsers) && rankedUsers.length > 0 && rankedUsers[0]?.username) {
+    const top = rankedUsers[0];
+    const scoreVal = top.similarityScore ?? top.score ?? 0.88;
+    const pct = Math.round(Number(scoreVal) * (Number(scoreVal) <= 1 ? 100 : 1));
+    return `Top Match: @${top.username} • ${pct}% Vibe Match`;
+  }
+  return 'Compare your signature 13 tracks to find your top Vibe Match';
+}
+
+export function deriveTodayMemoirStatus(memoirs = [], now = new Date()) {
+  if (!Array.isArray(memoirs) || memoirs.length === 0) {
+    return { hasLoggedToday: false, todayMemoir: null };
+  }
+  const todayStr = now.toISOString().split('T')[0];
+  const found = memoirs.find((m) => {
+    const rawDate = m?.createdAt || m?.timestamp || m?.date;
+    if (!rawDate) return false;
+    const str = typeof rawDate === 'string' ? rawDate : new Date(rawDate?.seconds ? rawDate.seconds * 1000 : rawDate).toISOString();
+    return str.startsWith(todayStr);
+  });
+  return {
+    hasLoggedToday: Boolean(found),
+    todayMemoir: found || null,
+  };
+}
+

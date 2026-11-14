@@ -5,7 +5,16 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 
 export function getActiveTabName(routeName) {
-  if (routeName === 'TheCollective' || routeName === 'ThemeDetails') {
+  if (routeName === 'TheCollective' || routeName === 'ThemeDetails' || routeName === 'Pickerchoosers') {
+    return 'TheCollective';
+  }
+  if (routeName === 'MainChatScreen' || routeName === 'ChatScreen') {
+    return 'MainChatScreen';
+  }
+  if (routeName === 'Your13') {
+    return 'Your13';
+  }
+  if (routeName === 'Home') {
     return 'Home';
   }
   return routeName || 'ProfileScreen';
@@ -24,11 +33,11 @@ export default function Taskbar({ navigation: propNavigation }) {
   const activeTabName = getActiveTabName(currentRouteName);
 
   const navItems = [
-    { name: 'Home', icon: 'home', lib: 'Feather' },
-    { name: 'Your13', icon: 'disc', lib: 'Feather' },
-    //{ name: 'Algo', icon: 'repeat', lib: 'Feather' },
-    { name: 'Memoir', icon: 'book', lib: 'Feather' },
-    { name: 'ProfileScreen', icon: 'person', lib: 'Ionicons' },
+    { name: 'Home', icon: 'home', lib: 'Feather', label: 'Home' },
+    { name: 'Your13', icon: 'disc', lib: 'Feather', label: 'Your13' },
+    { name: 'TheCollective', icon: 'layers', lib: 'Feather', label: 'The Collective' },
+    { name: 'MainChatScreen', icon: 'message-circle', lib: 'Feather', label: 'Chat' },
+    { name: 'ProfileScreen', icon: 'person', lib: 'Ionicons', label: 'Profile' },
   ];
 
   return (

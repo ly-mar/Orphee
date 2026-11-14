@@ -1,5 +1,9 @@
 // __tests__/homeAndUiSafety.test.js
-import { deriveHomeDashboardState } from '../utils/homeDashboardUtils';
+import {
+  deriveHomeDashboardState,
+  deriveVibeMatchPreview,
+  deriveTodayMemoirStatus,
+} from '../utils/homeDashboardUtils';
 import { sanitizeNotificationPrefs } from '../utils/notificationPrefsUtils';
 import { PRIVACY_POLICY_TEXT, SECURITY_ROW_LABEL } from '../utils/legalUtils';
 import { getActiveTabName } from '../Taskbar';
@@ -67,6 +71,21 @@ describe('HomeScreen Dashboard State Resilience [BUG-017]', () => {
     expect(state.progressCount).toBe(13);
     expect(state.isLocked).toBe(false);
   });
+
+  test('derives vibe match preview text for ranked users', () => {
+    expect(deriveVibeMatchPreview([])).toBe('Compare your signature 13 tracks to find your top Vibe Match');
+    const preview = deriveVibeMatchPreview([{ username: 'Alpha', similarityScore: 0.92 }]);
+    expect(preview).toBe('Top Match: @Alpha • 92% Vibe Match');
+  });
+
+  test('derives today memoir status correctly', () => {
+    const today = new Date('2026-11-14T12:00:00Z');
+    expect(deriveTodayMemoirStatus([], today)).toEqual({ hasLoggedToday: false, todayMemoir: null });
+    const todayMemoir = { id: 'm1', song: 'Starboy', createdAt: '2026-11-14T10:00:00Z' };
+    const res = deriveTodayMemoirStatus([todayMemoir], today);
+    expect(res.hasLoggedToday).toBe(true);
+    expect(res.todayMemoir).toEqual(todayMemoir);
+  });
 });
 
 describe('NotificationSettings Preference Normalization [BUG-018]', () => {
@@ -95,9 +114,12 @@ describe('Privacy Policy & Legal Text Cleanliness [VR-011]', () => {
 });
 
 describe('Taskbar Active Tab Mapping [VR-013]', () => {
-  test('maps TheCollective and ThemeDetails routes to Home tab', () => {
-    expect(getActiveTabName('TheCollective')).toBe('Home');
-    expect(getActiveTabName('ThemeDetails')).toBe('Home');
+  test('maps TheCollective, ThemeDetails, and Pickerchoosers to TheCollective tab', () => {
+    expect(getActiveTabName('TheCollective')).toBe('TheCollective');
+    expect(getActiveTabName('ThemeDetails')).toBe('TheCollective');
+    expect(getActiveTabName('Pickerchoosers')).toBe('TheCollective');
+    expect(getActiveTabName('MainChatScreen')).toBe('MainChatScreen');
+    expect(getActiveTabName('ChatScreen')).toBe('MainChatScreen');
     expect(getActiveTabName('Home')).toBe('Home');
     expect(getActiveTabName('Your13')).toBe('Your13');
     expect(getActiveTabName('ProfileScreen')).toBe('ProfileScreen');
