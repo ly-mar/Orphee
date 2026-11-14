@@ -61,12 +61,38 @@ function HomeScreen({ navigation }) {
     }
     let isMounted = true;
     getDoc(doc(db, 'ranking', uid))
-      .then((snap) => {
+      .then(async (snap) => {
         if (!isMounted) return;
         if (snap.exists() && Array.isArray(snap.data()?.rankings)) {
           const list = snap.data().rankings;
           setCachedRankedUsers(uid, list);
           setCachedRankedUsersState(list);
+
+          const topMatch = list.find((u) => u && u.uid !== uid && u.uname !== uid && !u.isSelf);
+          const topKey = topMatch?.uid || topMatch?.uname;
+          if (topKey && /^[A-Za-z0-9_-]{20,}$/.test(topKey)) {
+            const cached = getCachedUserProfile(topKey);
+            if (!cached || (!cached.username && !cached.displayName)) {
+              try {
+                const uDoc = await getDoc(doc(db, 'users', topKey));
+                if (isMounted && uDoc.exists()) {
+                  const uData = uDoc.data();
+                  setCachedUserProfile(topKey, uData);
+                  setCachedRankedUsersState((prev) =>
+                    prev.map((item) =>
+                      item.uid === topKey || item.uname === topKey
+                        ? {
+                            ...item,
+                            username: uData.username || uData.displayName,
+                            displayName: uData.displayName || uData.username,
+                          }
+                        : item
+                    )
+                  );
+                }
+              } catch (_) {}
+            }
+          }
         }
       })
       .catch(() => {});
@@ -140,7 +166,7 @@ function HomeScreen({ navigation }) {
     cachedRankedUsers.length > 0
       ? cachedRankedUsers
       : effectiveProfileDoc?.rankedUsers || [];
-  const vibePreviewText = deriveVibeMatchPreview(activeRankedUsers);
+  const vibePreviewText = deriveVibeMatchPreview(activeRankedUsers, currentUser?.uid);
 
   return (
     <ImageBackground source={backgroundImage} style={styles.backgroundImage}>

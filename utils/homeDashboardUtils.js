@@ -1,6 +1,7 @@
 // utils/homeDashboardUtils.js
 // Guards HomeScreen dashboard state derivation against null user docs and sparse playlists [BUG-017]
 import { computeLockStateForPlaylist, normalizeYour13List, REQUIRED_YOUR13_COUNT } from './playlistUtils';
+import { getCachedUserProfile } from './sessionCache';
 
 export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
   const uid = user?.uid ?? null;
@@ -29,10 +30,10 @@ export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
   const lockState = computeLockStateForPlaylist(your13, uid);
   const rawName = String(
     userDoc?.displayName ??
-      userDoc?.username ??
-      playlistDoc?.username ??
-      user?.displayName ??
-      ''
+    userDoc?.username ??
+    playlistDoc?.username ??
+    user?.displayName ??
+    ''
   ).trim();
 
   return {
@@ -47,18 +48,59 @@ export function deriveHomeDashboardState(user, userDoc, playlistDoc = null) {
   };
 }
 
-export function deriveVibeMatchPreview(rankedUsers = []) {
-  if (Array.isArray(rankedUsers) && rankedUsers.length > 0) {
-    const top = rankedUsers[0];
-    const rawName = top.username || top.displayName || top.uname;
-    if (rawName) {
-      const cleanName = String(rawName).replace(/^@/, '');
-      const scoreVal = top.similarityScore ?? top.score ?? top.totalScore ?? 0.88;
-      const pct = Math.round(Number(scoreVal) * (Number(scoreVal) <= 1 ? 100 : 1));
-      return `Top Match: @${cleanName} • ${pct}% Vibe Match`;
-    }
+export function deriveVibeMatchPreview(rankedUsers = [], currentUserId = null) {
+  if (!Array.isArray(rankedUsers) || rankedUsers.length === 0) {
+    return 'Compare your signature 13 tracks to find your top Vibe Match';
   }
-  return 'Compare your signature 13 tracks to find your top Vibe Match';
+
+  const cleanCurrentUid = String(currentUserId || '').trim();
+
+  // Find the top match that is not self
+  const top =
+    rankedUsers.find((u) => {
+      if (!u || typeof u !== 'object') return false;
+      if (u.isSelf) return false;
+      const uKey = String(u.uid || u.uname || '').trim();
+      if (cleanCurrentUid && (uKey === cleanCurrentUid || uKey === 'current_user')) {
+        return false;
+      }
+      return true;
+    }) || null;
+
+  if (!top) {
+    return 'Compare your signature 13 tracks to find your top Vibe Match';
+  }
+
+  const candidateKey = String(top.uid || top.uname || '').trim();
+  if (top.isSelf || (cleanCurrentUid && candidateKey === cleanCurrentUid)) {
+    return 'Compare your signature 13 tracks to find your top Vibe Match';
+  }
+
+  const cached = candidateKey ? getCachedUserProfile(candidateKey) : null;
+  let rawName =
+    top.displayName ||
+    top.username ||
+    cached?.displayName ||
+    cached?.username ||
+    top.name ||
+    top.uname ||
+    '';
+
+  let cleanName = String(rawName).trim().replace(/^@+/, '');
+
+  if (cleanName.startsWith('mock_')) {
+    cleanName = cleanName
+      .replace(/^mock_/, '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .replace(/\s+/g, '');
+  } else if (!cleanName || /^[A-Za-z0-9_-]{20,}$/.test(cleanName)) {
+    cleanName = 'Listener';
+  }
+
+  const scoreVal = top.similarityScore ?? top.score ?? top.totalScore ?? 0.88;
+  const pct = Math.round(Number(scoreVal) * (Number(scoreVal) <= 1 ? 100 : 1));
+  return `Top Match: @${cleanName} • ${pct}% Vibe Match`;
 }
 
 export function deriveTodayMemoirStatus(memoirs = [], now = new Date()) {

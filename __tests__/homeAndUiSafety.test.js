@@ -76,6 +76,29 @@ describe('HomeScreen Dashboard State Resilience [BUG-017]', () => {
     expect(deriveVibeMatchPreview([])).toBe('Compare your signature 13 tracks to find your top Vibe Match');
     const preview = deriveVibeMatchPreview([{ username: 'Alpha', similarityScore: 0.92 }]);
     expect(preview).toBe('Top Match: @Alpha • 92% Vibe Match');
+
+    // Never displays raw 28-character Firebase UID
+    const rawUidPreview = deriveVibeMatchPreview([
+      { uname: '4MWNN1s97pMDPGwUUzaZNU5UJML2', similarityScore: 0.88 },
+    ]);
+    expect(rawUidPreview).toBe('Top Match: @Listener • 88% Vibe Match');
+
+    // Skips current user when currentUserId is supplied
+    const skipSelfPreview = deriveVibeMatchPreview(
+      [
+        { uid: '4MWNN1s97pMDPGwUUzaZNU5UJML2', uname: '4MWNN1s97pMDPGwUUzaZNU5UJML2', similarityScore: 1.0 },
+        { uid: 'u-charlie', username: 'Charlie', similarityScore: 0.85 },
+      ],
+      '4MWNN1s97pMDPGwUUzaZNU5UJML2'
+    );
+    expect(skipSelfPreview).toBe('Top Match: @Charlie • 85% Vibe Match');
+
+    // Returns fallback message if only current user is in ranked users
+    const onlySelfPreview = deriveVibeMatchPreview(
+      [{ uid: '4MWNN1s97pMDPGwUUzaZNU5UJML2', uname: '4MWNN1s97pMDPGwUUzaZNU5UJML2', similarityScore: 1.0 }],
+      '4MWNN1s97pMDPGwUUzaZNU5UJML2'
+    );
+    expect(onlySelfPreview).toBe('Compare your signature 13 tracks to find your top Vibe Match');
   });
 
   test('derives today memoir status correctly', () => {
